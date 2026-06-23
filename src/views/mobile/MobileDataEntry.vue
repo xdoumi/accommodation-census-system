@@ -1,12 +1,5 @@
 <template>
-  <div
-    ref="rootRef"
-    class="collection-entry"
-    @touchstart="onTouchStart"
-    @touchend="onTouchEnd"
-  >
-    <MobileFormStep :steps="stepLabels" :current="currentStep" />
-
+  <div ref="rootRef" class="collection-entry table-entry">
     <div v-if="statusBanner" class="status-banner" :class="statusBanner.type">
       <el-icon><component :is="statusBanner.icon" /></el-icon>
       <span>{{ statusBanner.text }}</span>
@@ -30,15 +23,43 @@
       </el-tag>
     </div>
 
-    <div class="m-card module-card">
+    <div class="module-anchor-bar">
+      <button
+        v-for="module in formModules"
+        :key="module.key"
+        type="button"
+        class="module-anchor"
+        :class="{ active: activeModuleKey === module.key, error: moduleHasError(module) }"
+        @click="scrollToModule(module.key)"
+      >
+        <span>{{ module.key }}</span>
+        {{ module.title }}
+      </button>
+      <button
+        type="button"
+        class="module-anchor"
+        :class="{ active: activeModuleKey === 'PREVIEW' }"
+        @click="scrollToModule('PREVIEW')"
+      >
+        预览
+      </button>
+    </div>
+
+    <div
+      v-for="module in formModules"
+      :key="module.key"
+      :ref="el => setModuleRef(module.key, el)"
+      class="m-card module-card module-section"
+    >
       <div class="module-header">
         <div>
-          <div class="module-title">{{ activeModuleTitle }}</div>
+          <div class="module-title">{{ module.key }} {{ module.title }}</div>
+          <div class="module-progress">{{ moduleCompletionText(module) }}</div>
         </div>
-        <div class="module-count">{{ currentStep + 1 }}/{{ stepLabels.length }}</div>
+        <div v-if="moduleHasError(module)" class="module-error-badge">待补充</div>
       </div>
 
-      <template v-if="activeModule.key === 'A'">
+      <template v-if="module.key === 'A'">
         <div class="action-panel">
           <div>
             <div class="panel-title"><span class="required">*</span>A1 定位坐标</div>
@@ -62,7 +83,7 @@
         <FieldControl field-key="licenseType" :form="form" :errors="errors" :disabled="readOnly" />
       </template>
 
-      <template v-else-if="activeModule.key === 'B'">
+      <template v-else-if="module.key === 'B'">
         <PhotoPicker
           label="B1 营业执照或同等效力照片"
           :required="true"
@@ -86,7 +107,7 @@
         <FieldControl field-key="legalRepresentativePhone" :form="form" :errors="errors" :disabled="readOnly" />
       </template>
 
-      <template v-else-if="activeModule.key === 'C'">
+      <template v-else-if="module.key === 'C'">
         <div class="copy-row">
           <el-checkbox v-model="sameAsRegisteredName" :disabled="readOnly" @change="syncRegisteredName">经营单位名称同注册名</el-checkbox>
           <el-checkbox v-model="sameAsRegisteredAddress" :disabled="readOnly" @change="syncRegisteredAddress">实际地址同注册地址</el-checkbox>
@@ -101,7 +122,7 @@
         <FieldControl field-key="stateHolding" :form="form" :errors="errors" :disabled="readOnly" />
       </template>
 
-      <template v-else-if="activeModule.key === 'D'">
+      <template v-else-if="module.key === 'D'">
         <FieldControl field-key="buildingOwnership" :form="form" :errors="errors" :disabled="readOnly" />
         <FieldControl field-key="businessMode" :form="form" :errors="errors" :disabled="readOnly" />
         <FieldControl
@@ -122,7 +143,7 @@
         </div>
       </template>
 
-      <template v-else-if="activeModule.key === 'E'">
+      <template v-else-if="module.key === 'E'">
         <FieldControl field-key="policeSystemStatus" :form="form" :errors="errors" :disabled="readOnly" />
         <FieldControl
           v-if="['newly_added', 'not_connected'].includes(form.policeSystemStatus)"
@@ -134,12 +155,12 @@
         <FieldControl field-key="inOriginalCultureTourismList" :form="form" :errors="errors" :disabled="readOnly" />
       </template>
 
-      <template v-else-if="activeModule.key === 'F'">
+      <template v-else-if="module.key === 'F'">
         <FieldControl field-key="otaPlatforms" :form="form" :errors="errors" :disabled="readOnly" @ota-change="handleOtaChange" />
         <FieldControl v-if="form.otaPlatforms.includes('other')" field-key="otaOther" :form="form" :errors="errors" :disabled="readOnly" />
       </template>
 
-      <template v-else-if="activeModule.key === 'G'">
+      <template v-else-if="module.key === 'G'">
         <MultiPhotoPicker
           label="住宿单位门头照"
           :required="true"
@@ -164,18 +185,22 @@
           @change="handleSignatureChange"
         />
       </template>
+    </div>
 
-      <template v-else>
-        <SubmitPreview :form="form" />
-      </template>
+    <div :ref="el => setModuleRef('PREVIEW', el)" class="m-card module-card module-section preview-card">
+      <div class="module-header">
+        <div>
+          <div class="module-title">提交预览</div>
+          <div class="module-progress">请核对整张表后提交审核</div>
+        </div>
+      </div>
+      <SubmitPreview :form="form" />
     </div>
 
     <div class="m-bottom-bar">
-      <el-button v-if="currentStep > 0" @click="prevStep">上一步</el-button>
       <el-button v-if="!readOnly" type="info" @click="saveDraft">暂存</el-button>
-      <el-button v-if="currentStep < stepLabels.length - 1" type="primary" @click="nextStep">下一步</el-button>
-      <el-button v-else-if="!readOnly" type="primary" :loading="submitting" @click="handleSubmit">提交</el-button>
-      <el-button v-else type="primary" @click="router.push('/m/units')">返回清单</el-button>
+      <el-button v-if="!readOnly" type="primary" :loading="submitting" @click="handleSubmit">提交</el-button>
+      <el-button v-if="readOnly" type="primary" @click="router.push('/m/units')">返回清单</el-button>
     </div>
 
     <el-drawer v-model="showUnitPicker" direction="btt" size="78%" title="选择导入名录">
@@ -207,7 +232,6 @@ import { ElMessage } from 'element-plus'
 import {
   COLLECTION_FIELD_MAP,
   COLLECTION_MODULES,
-  COLLECTION_STEP_LABELS,
   INDUSTRY_OPTIONS,
   buildCollectionFormFromUnit,
   createEmptyCollectionForm,
@@ -221,7 +245,6 @@ import {
 import { useCensusStore } from '@/stores/census'
 import { useOfflineQueue } from '@/composables/useOfflineQueue'
 import db from '@/db'
-import MobileFormStep from '@/components/mobile/MobileFormStep.vue'
 import { INITIAL_REVIEW_STATUS } from '@/utils/reviewFlow'
 
 const route = useRoute()
@@ -230,8 +253,8 @@ const censusStore = useCensusStore()
 const offlineQueue = useOfflineQueue()
 
 const rootRef = ref(null)
-const currentStep = ref(0)
-const stepLabels = COLLECTION_STEP_LABELS
+const moduleRefs = new Map()
+const activeModuleKey = ref('A')
 const form = reactive(createEmptyCollectionForm())
 const errors = ref({})
 const units = ref([])
@@ -245,8 +268,7 @@ const sameAsRegisteredAddress = ref(false)
 const editingRecordId = ref(route.query.recordId ? Number(route.query.recordId) : null)
 const readOnly = ref(false)
 
-const activeModule = computed(() => COLLECTION_MODULES[currentStep.value])
-const activeModuleTitle = computed(() => activeModule.value.key === 'PREVIEW' ? '提交预览' : `${activeModule.value.key} ${activeModule.value.title}`)
+const formModules = computed(() => COLLECTION_MODULES.filter(module => module.key !== 'PREVIEW' && visibleFields(module).length > 0))
 const draftKey = computed(() => `collection_form_${route.params.taskId}_${route.params.assignmentId || 'global'}_${selectedUnit.value?.id || form.creditCode || form.unitName || 'new'}`)
 
 const filteredUnits = computed(() => {
@@ -343,7 +365,7 @@ async function restoreRecord(recordId) {
     try { Object.assign(form, createEmptyCollectionForm(), JSON.parse(record.formData)) } catch { /* ignore */ }
   }
   selectedUnit.value = units.value.find(u => u.id === record.accommodationId) || null
-  currentStep.value = 0
+  activeModuleKey.value = 'A'
   ElMessage.success(readOnly.value ? '已打开单位填报记录' : '已打开单位填报记录，可继续修改')
 }
 
@@ -356,7 +378,6 @@ function saveLocalDraft() {
     localStorage.setItem(draftKey.value, JSON.stringify({
       form: { ...form },
       selectedUnitId: selectedUnit.value?.id || null,
-      currentStep: currentStep.value,
       ts: Date.now(),
     }))
   } catch { /* ignore storage quota errors */ }
@@ -368,7 +389,6 @@ function restoreLocalDraft() {
     if (!raw) return false
     const draft = JSON.parse(raw)
     Object.assign(form, createEmptyCollectionForm(), draft.form || {})
-    if (Number.isInteger(draft.currentStep)) currentStep.value = draft.currentStep
     return true
   } catch {
     return false
@@ -454,20 +474,44 @@ function visibleFields(module) {
   return getVisibleModuleFields(module, form)
 }
 
-function nextStepIndex(step = currentStep.value) {
-  const next = step + 1
-  if (COLLECTION_MODULES[next]?.key === 'B' && shouldSkipBusinessModule(form)) {
-    return Math.min(next + 1, stepLabels.length - 1)
-  }
-  return Math.min(next, stepLabels.length - 1)
+function setModuleRef(key, el) {
+  if (el) moduleRefs.set(key, el)
 }
 
-function prevStepIndex(step = currentStep.value) {
-  const prev = step - 1
-  if (COLLECTION_MODULES[prev]?.key === 'B' && shouldSkipBusinessModule(form)) {
-    return Math.max(prev - 1, 0)
-  }
-  return Math.max(prev, 0)
+function scrollToModule(key) {
+  activeModuleKey.value = key
+  moduleRefs.get(key)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+function scrollToFirstError() {
+  const firstErrorKey = Object.keys(errors.value)[0]
+  if (!firstErrorKey) return
+  const module = formModules.value.find(item => item.fields.includes(firstErrorKey))
+  if (module) scrollToModule(module.key)
+}
+
+function moduleHasError(module) {
+  return visibleFields(module).some(key => errors.value[key])
+}
+
+function moduleCompletionText(module) {
+  const fields = visibleFields(module).filter(key => isFieldRequired(key, form))
+  if (!fields.length) return '无必填项'
+  const done = fields.filter(key => isValidRequiredValue(key)).length
+  return `必填 ${done}/${fields.length}`
+}
+
+function isValidRequiredValue(key) {
+  const field = COLLECTION_FIELD_MAP[key]
+  const value = form[key]
+  if (!field || !isFieldRequired(key, form)) return true
+  if (field.type === 'location') return Boolean(form.location)
+  if (field.type === 'checkbox') return Array.isArray(value) && value.length > 0
+  if (field.type === 'photos') return Array.isArray(value) && value.length > 0
+  if (['photo', 'signature'].includes(field.type)) return Boolean(value)
+  if (value === '' || value === null || value === undefined) return false
+  if (field.pattern) return field.pattern.test(String(value))
+  return true
 }
 
 function handleSignatureChange(dataUrl) {
@@ -475,8 +519,7 @@ function handleSignatureChange(dataUrl) {
   form.managerSignatureAt = new Date().toISOString()
 }
 
-function validateStep(step = currentStep.value) {
-  const module = COLLECTION_MODULES[step]
+function validateModule(module) {
   const fields = visibleFields(module)
   const nextErrors = { ...errors.value }
   for (const key of Object.keys(nextErrors)) {
@@ -506,29 +549,8 @@ function validateStep(step = currentStep.value) {
 
 function validateAll() {
   errors.value = {}
-  for (let i = 0; i < COLLECTION_MODULES.length - 1; i++) {
-    validateStep(i)
-  }
-  const firstErrorKey = Object.keys(errors.value)[0]
-  if (firstErrorKey) {
-    const step = COLLECTION_MODULES.findIndex(m => m.fields.includes(firstErrorKey))
-    if (step >= 0) currentStep.value = step
-    return false
-  }
-  return true
-}
-
-function prevStep() {
-  if (currentStep.value > 0) currentStep.value = prevStepIndex()
-}
-
-function nextStep() {
-  if (!validateStep()) {
-    ElMessage.error('请补全当前模块必填项')
-    return
-  }
-  if (currentStep.value < stepLabels.length - 1) currentStep.value = nextStepIndex()
-  nextTick(() => rootRef.value?.scrollIntoView({ block: 'start' }))
+  for (const module of formModules.value) validateModule(module)
+  return Object.keys(errors.value).length === 0
 }
 
 async function saveDraft() {
@@ -542,6 +564,7 @@ async function handleSubmit() {
   if (readOnly.value) return
   if (!validateAll()) {
     ElMessage.error('存在未完成字段，请核对后提交')
+    nextTick(scrollToFirstError)
     return
   }
   submitting.value = true
@@ -604,22 +627,6 @@ async function findExistingRecord() {
     if (form.creditCode && record.creditCode === form.creditCode) return true
     return false
   })
-}
-
-let touchStartX = 0
-let touchStartY = 0
-function onTouchStart(e) {
-  if (!e.touches?.[0]) return
-  touchStartX = e.touches[0].clientX
-  touchStartY = e.touches[0].clientY
-}
-function onTouchEnd(e) {
-  if (!e.changedTouches?.[0]) return
-  const dx = e.changedTouches[0].clientX - touchStartX
-  const dy = e.changedTouches[0].clientY - touchStartY
-  if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 2) return
-  if (dx < 0) nextStep()
-  else prevStep()
 }
 
 function fileToDataUrl(file) {
@@ -964,11 +971,67 @@ const SubmitPreview = defineComponent({
   touch-action: pan-y;
 }
 
+.table-entry {
+  padding-top: 1px;
+}
+
 .unit-summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.module-anchor-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  background: rgba(245, 246, 250, 0.96);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid #eef0f4;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.module-anchor {
+  flex: 0 0 auto;
+  min-width: 82px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 18px;
+  background: #fff;
+  color: #606266;
+  font-size: 13px;
+  font-weight: 600;
+
+  span {
+    margin-right: 3px;
+    color: #1a5fc5;
+  }
+
+  &.active {
+    color: #fff;
+    background: #1a5fc5;
+    border-color: #1a5fc5;
+
+    span {
+      color: #fff;
+    }
+  }
+
+  &.error {
+    border-color: #f56c6c;
+    color: #f56c6c;
+  }
 }
 
 .unit-title {
@@ -988,6 +1051,14 @@ const SubmitPreview = defineComponent({
   padding-top: 14px;
 }
 
+.module-section {
+  scroll-margin-top: 64px;
+}
+
+.preview-card {
+  margin-bottom: 86px;
+}
+
 .module-header {
   display: flex;
   justify-content: space-between;
@@ -1003,9 +1074,20 @@ const SubmitPreview = defineComponent({
   color: #1f2937;
 }
 
-.module-count {
+.module-progress {
+  margin-top: 4px;
   font-size: 13px;
   color: #606266;
+}
+
+.module-error-badge {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #fef0f0;
+  color: #f56c6c;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .action-panel {
