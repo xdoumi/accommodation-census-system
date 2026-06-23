@@ -1,0 +1,434 @@
+<template>
+  <div class="page-container" v-loading="store.taskLoading">
+    <el-page-header @back="router.push(backPath)" :title="'返回'">
+      <template #content>
+        <span class="page-title">{{ store.currentTask?.title || '任务详情' }}</span>
+        <StatusTag v-if="store.currentTask" :value="store.currentTask.status" :options="CENSUS_TASK_STATUS_OPTIONS" style="margin-left: 8px" />
+      </template>
+    </el-page-header>
+
+    <div v-if="store.currentTask" style="margin-top: 20px;">
+      <el-card shadow="never" style="margin-bottom: 16px;">
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="任务类型">{{ isMainTask ? '主任务' : '子任务' }}</el-descriptions-item>
+          <el-descriptions-item label="状态">
+            <StatusTag :value="store.currentTask.status" :options="CENSUS_TASK_STATUS_OPTIONS" />
+          </el-descriptions-item>
+          <el-descriptions-item label="任务名称">{{ store.currentTask.title }}</el-descriptions-item>
+          <el-descriptions-item label="截止日期">{{ formatDate(store.currentTask.deadline) }}</el-descriptions-item>
+          <el-descriptions-item label="任务描述" :span="2">{{ store.currentTask.description }}</el-descriptions-item>
+          <el-descriptions-item v-if="isMainTask" label="任务范围" :span="2">
+            {{ store.currentTask.scopeType === 'province' ? '贵州省全省' : areaNames(scopeCodes) }}
+          </el-descriptions-item>
+          <el-descriptions-item v-else label="责任人" :span="2">
+            {{ store.currentTask.responsibleUserNames || '-' }}
+          </el-descriptions-item>
+        </el-descriptions>
+      </el-card>
+
+      <template v-if="isMainTask">
+        <el-card shadow="never">
+          <template #header>
+            <div class="card-header">
+              <span>子任务</span>
+              <el-button type="primary" @click="openSubTaskDialog" v-if="authStore.hasPermission('census:create')">创建子任务</el-button>
+            </div>
+          </template>
+          <el-table :data="store.subTasks" border stripe>
+            <el-table-column prop="title" label="子任务名称" min-width="200" show-overflow-tooltip />
+            <el-table-column label="分配区域" width="110" align="center">
+              <template #default="{ row }">{{ parseArray(row.assignedAreaCodes).length }}个</template>
+            </el-table-column>
+            <el-table-column prop="responsibleUserNames" label="责任人" min-width="180" show-overflow-tooltip />
+            <el-table-column label="状态" width="100" align="center">
+              <template #default="{ row }"><StatusTag :value="row.status" :options="CENSUS_TASK_STATUS_OPTIONS" /></template>
+            </el-table-column>
+            <el-table-column label="截止日期" width="120" align="center">
+              <template #default="{ row }">{{ formatDate(row.deadline) }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="180" align="center">
+              <template #default="{ row }">
+                <el-button link type="primary" size="small" @click="router.push(`/census/${row.id}`)">查看</el-button>
+                <el-button link type="success" size="small" @click="store.startTask(row.id); refresh()" v-if="row.status === 'published'">启动</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+      </template>
+
+      <template v-else>
+        <el-card header="分配与进度" shadow="never">
+          <ProgressOverview :assignments="store.assignments" />
+        </el-card>
+
+        <el-card header="采集记录" shadow="never" style="margin-top: 16px;">
+          <template #header>
+            <div class="card-header">
+              <span>采集记录</span>
+              <div>
+                <el-button size="small" @click="loadRecords">刷新</el-button>
+                <el-button size="small" type="primary" :disabled="records.length === 0" @click="exportRecords">导出 CSV</el-button>
+              </div>
+            </div>
+          </template>
+
+          <el-table :data="records" border stripe size="small">
+            <el-table-column prop="unitName" label="单位名称" min-width="180" show-overflow-tooltip />
+            <el-table-column prop="creditCode" label="信用代码" min-width="170" show-overflow-tooltip />
+            <el-table-column label="来源" width="90" align="center">
+              <template #default="{ row }">
+                <el-tag size="small" :type="row.source === 'mobile' ? 'success' : 'info'">{{ row.source === 'mobile' ? '移动端' : 'PC端' }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="100" align="center">
+              <template #default="{ row }"><StatusTag :value="row.status" :options="CENSUS_RECORD_STATUS_OPTIONS" /></template>
+            </el-table-column>
+            <el-table-column label="提交时间" width="170">
+              <template #default="{ row }">{{ formatDateTime(row.submittedAt || row.updatedAt) }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="220" align="center">
+              <template #default="{ row }">
+                <el-button link type="primary" size="small" @click="openRecord(row)">查看</el-button>
+                <el-button link type="primary" size="small" @click="editRecord(row)">修改</el-button>
+                <el-button v-if="row.status === 'draft'" link type="success" size="small" @click="submitRecordForReview(row)">提交审核</el-button>
+                <el-button v-if="canCurrentUserReview(row)" link type="success" size="small" @click="reviewRecord(row, 'approve')">{{ currentReviewStep?.approveText || '通过' }}</el-button>
+                <el-button v-if="canCurrentUserReview(row)" link type="danger" size="small" @click="reviewRecord(row, 'reject')">{{ currentReviewStep?.rejectText || '驳回' }}</el-button>
+                <el-button link type="danger" size="small" @click="deleteRecord(row)">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+
+        <div style="margin-top: 20px; text-align: right;">
+          <el-button v-if="['published', 'in_progress'].includes(store.currentTask.status) && authStore.hasPermission('census:fill')"
+            type="primary" @click="router.push(`/census/${store.currentTask.id}/entry`)">数据填报</el-button>
+        </div>
+      </template>
+    </div>
+
+    <el-dialog v-model="subTaskDialogVisible" title="创建子任务" width="760px">
+      <el-form ref="subTaskFormRef" :model="subTaskForm" :rules="subTaskRules" label-width="110px">
+        <el-form-item label="子任务名称" prop="title">
+          <el-input v-model="subTaskForm.title" placeholder="请输入子任务名称" />
+        </el-form-item>
+        <el-form-item label="截止日期" prop="deadline">
+          <el-date-picker v-model="subTaskForm.deadline" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="任务说明">
+          <el-input v-model="subTaskForm.description" type="textarea" :rows="2" />
+        </el-form-item>
+        <el-form-item label="分配区域" prop="assignedAreaCodes">
+          <AreaAssignTree v-model="subTaskForm.assignedAreaCodes" />
+        </el-form-item>
+        <el-form-item label="责任人" prop="responsibleUserIds">
+          <el-select
+            v-model="subTaskForm.responsibleUserIds"
+            multiple
+            filterable
+            placeholder="输入姓名、用户名或手机号搜索"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="user in responsibleUsers"
+              :key="user.id"
+              :label="`${user.realName}（${user.username} · ${user.areaName}）`"
+              :value="user.id"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="subTaskDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submittingSubTask" @click="createSubTask">创建</el-button>
+      </template>
+    </el-dialog>
+
+    <el-drawer v-model="recordDrawerVisible" title="采集记录详情" size="620px">
+      <div v-if="activeRecord">
+        <el-descriptions :column="2" border style="margin-bottom: 16px;">
+          <el-descriptions-item label="单位名称" :span="2">{{ activeRecord.unitName }}</el-descriptions-item>
+          <el-descriptions-item label="信用代码">{{ activeRecord.creditCode }}</el-descriptions-item>
+          <el-descriptions-item label="状态"><StatusTag :value="activeRecord.status" :options="CENSUS_RECORD_STATUS_OPTIONS" /></el-descriptions-item>
+          <el-descriptions-item label="提交来源">{{ activeRecord.source === 'mobile' ? '移动端' : 'PC端' }}</el-descriptions-item>
+          <el-descriptions-item label="提交时间">{{ formatDateTime(activeRecord.submittedAt || activeRecord.updatedAt) }}</el-descriptions-item>
+          <el-descriptions-item label="县级审核">{{ formatDateTime(activeRecord.countyReviewedAt || activeRecord.countyRejectedAt) || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="市级审核">{{ formatDateTime(activeRecord.cityReviewedAt || activeRecord.cityRejectedAt) || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="省级审核">{{ formatDateTime(activeRecord.provinceReviewedAt || activeRecord.provinceRejectedAt) || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="是否可用">{{ activeRecord.status === 'available' || activeRecord.status === 'approved' ? '是' : '否' }}</el-descriptions-item>
+        </el-descriptions>
+
+        <div v-for="group in previewGroups" :key="group.module.key" class="record-section">
+          <h3>{{ group.module.key }} {{ group.module.title }}</h3>
+          <el-descriptions :column="1" border>
+            <el-descriptions-item v-for="item in group.items" :key="item.key" :label="item.field.label">
+              {{ formatFieldValue(item.key, item.field, item.value) || '-' }}
+            </el-descriptions-item>
+          </el-descriptions>
+        </div>
+      </div>
+    </el-drawer>
+  </div>
+</template>
+
+<script setup>
+import { computed, onMounted, reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useCensusStore } from '@/stores/census'
+import { useAuthStore } from '@/stores/auth'
+import { useAreaStore } from '@/stores/area'
+import { CENSUS_RECORD_STATUS_OPTIONS, CENSUS_TASK_STATUS_OPTIONS } from '@/utils/constants'
+import { formatDate, formatDateTime } from '@/utils/formatters'
+import { COLLECTION_FIELD_MAP, COLLECTION_MODULES, extractAccommodationPatch, getOptionLabel, getVisibleModuleFields, shouldSkipBusinessModule } from '@/utils/collectionSpec'
+import { buildReviewPatch, canReviewRecord, getReviewStepForRole, submitForCountyReviewPatch } from '@/utils/reviewFlow'
+import db from '@/db'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import StatusTag from '@/components/common/StatusTag.vue'
+import ProgressOverview from '@/components/census/ProgressOverview.vue'
+import AreaAssignTree from '@/components/census/AreaAssignTree.vue'
+
+const route = useRoute()
+const router = useRouter()
+const store = useCensusStore()
+const authStore = useAuthStore()
+const areaStore = useAreaStore()
+const records = ref([])
+const activeRecord = ref(null)
+const recordDrawerVisible = ref(false)
+const subTaskDialogVisible = ref(false)
+const submittingSubTask = ref(false)
+const subTaskFormRef = ref(null)
+const responsibleUsers = ref([])
+
+const subTaskForm = reactive({
+  title: '',
+  deadline: '',
+  description: '',
+  assignedAreaCodes: [],
+  responsibleUserIds: [],
+})
+
+const subTaskRules = {
+  title: [{ required: true, message: '请输入子任务名称', trigger: 'blur' }],
+  deadline: [{ required: true, message: '请选择截止日期', trigger: 'change' }],
+  assignedAreaCodes: [{ required: true, type: 'array', min: 1, message: '请选择分配区域', trigger: 'change' }],
+  responsibleUserIds: [{ required: true, type: 'array', min: 1, message: '请选择责任人', trigger: 'change' }],
+}
+
+const isMainTask = computed(() => (store.currentTask?.taskType || 'main') === 'main')
+const backPath = computed(() => isMainTask.value ? '/census' : `/census/${store.currentTask?.parentTaskId || ''}`)
+const scopeCodes = computed(() => parseArray(store.currentTask?.scopeAreaCodes || store.currentTask?.assignedAreaCodes))
+const currentReviewStep = computed(() => getReviewStepForRole(authStore.userRole))
+
+const activeForm = computed(() => {
+  if (!activeRecord.value?.formData) return {}
+  try { return JSON.parse(activeRecord.value.formData) } catch { return {} }
+})
+
+const previewGroups = computed(() => COLLECTION_MODULES.filter(m => m.key !== 'PREVIEW').map(module => {
+  const fieldKeys = module.key === 'B' && shouldSkipBusinessModule(activeForm.value) ? [] : getVisibleModuleFields(module, activeForm.value)
+  return {
+    module,
+    items: fieldKeys.map(key => ({ key, field: COLLECTION_FIELD_MAP[key], value: activeForm.value[key] })).filter(item => item.field),
+  }
+}).filter(group => group.items.length > 0))
+
+onMounted(refresh)
+
+async function refresh() {
+  await areaStore.fetchAreas()
+  await store.fetchTaskDetail(route.params.id)
+  await loadUsers()
+  if (!isMainTask.value) await loadRecords()
+}
+
+async function loadUsers() {
+  responsibleUsers.value = (await db.users.toArray()).filter(user => ['enumerator', 'county_admin', 'city_admin'].includes(user.role) && user.status === 'active')
+}
+
+function openSubTaskDialog() {
+  subTaskForm.title = `${store.currentTask.title}子任务`
+  subTaskForm.deadline = store.currentTask.deadline?.split('T')[0] || ''
+  subTaskForm.description = ''
+  subTaskForm.assignedAreaCodes = []
+  subTaskForm.responsibleUserIds = []
+  subTaskDialogVisible.value = true
+}
+
+async function createSubTask() {
+  const valid = await subTaskFormRef.value?.validate().catch(() => false)
+  if (!valid) return
+  submittingSubTask.value = true
+  try {
+    const selectedUsers = responsibleUsers.value.filter(user => subTaskForm.responsibleUserIds.includes(user.id))
+    await store.createSubTask(store.currentTask.id, {
+      title: subTaskForm.title,
+      description: subTaskForm.description,
+      deadline: subTaskForm.deadline,
+      assignedAreaCodes: JSON.stringify(subTaskForm.assignedAreaCodes),
+      responsibleUserIds: JSON.stringify(subTaskForm.responsibleUserIds),
+      responsibleUserNames: selectedUsers.map(user => user.realName).join('、'),
+    })
+    ElMessage.success('子任务已创建')
+    subTaskDialogVisible.value = false
+    await refresh()
+  } finally {
+    submittingSubTask.value = false
+  }
+}
+
+async function loadRecords() {
+  const taskId = Number(route.params.id)
+  const byTask = await db.censusRecords.where('taskId').equals(taskId).toArray()
+  const byAssignments = []
+  for (const assignment of store.assignments) {
+    byAssignments.push(...await db.censusRecords.where('assignmentId').equals(assignment.id).toArray())
+  }
+  const map = new Map()
+  ;[...byTask, ...byAssignments].forEach(record => map.set(record.id, record))
+  records.value = Array.from(map.values())
+  records.value.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt))
+}
+
+function openRecord(row) {
+  activeRecord.value = row
+  recordDrawerVisible.value = true
+}
+
+function editRecord(row) {
+  router.push(`/census/${store.currentTask.id}/entry?assignmentId=${row.assignmentId || ''}&recordId=${row.id}`)
+}
+
+async function submitRecordForReview(row) {
+  const patch = submitForCountyReviewPatch()
+  await db.censusRecords.update(row.id, patch)
+  Object.assign(row, patch)
+  ElMessage.success('已提交审核')
+}
+
+async function deleteRecord(row) {
+  try {
+    await ElMessageBox.confirm(`确定删除「${row.unitName || '未命名单位'}」的采集记录吗？`, '删除确认', { type: 'warning' })
+    await db.censusRecords.delete(row.id)
+    ElMessage.success('已删除')
+    await loadRecords()
+  } catch { /* cancel */ }
+}
+
+function canCurrentUserReview(row) {
+  return authStore.hasPermission('census:review') && canReviewRecord(row, authStore.userRole) && isRecordInReviewScope(row)
+}
+
+function isRecordInReviewScope(row) {
+  const role = authStore.userRole
+  if (['super_admin', 'provincial_admin'].includes(role)) return true
+  const assignment = store.assignments.find(item => item.id === row.assignmentId)
+  const areaCode = assignment?.areaCode || ''
+  if (role === 'county_admin') return areaCode === authStore.userAreaCode
+  if (role === 'city_admin') return areaCode.startsWith(authStore.userAreaCode.substring(0, 4))
+  return false
+}
+
+async function reviewRecord(row, action) {
+  try {
+    const patch = buildReviewPatch(row, authStore.userRole, action, authStore.currentUser?.id)
+    await db.censusRecords.update(row.id, patch)
+    Object.assign(row, patch)
+    if (patch.status === 'available') await publishRecordToAccommodation(row)
+    ElMessage.success(action === 'approve' ? (patch.status === 'available' ? '省级审核通过，记录已可用' : '已提交下一级审核') : '已驳回')
+  } catch (error) {
+    ElMessage.error(error.message || '审核失败')
+  }
+}
+
+async function publishRecordToAccommodation(row) {
+  let formData = {}
+  try { formData = JSON.parse(row.formData || '{}') } catch { formData = {} }
+  const patch = extractAccommodationPatch(formData)
+  if (row.accommodationId) {
+    await db.accommodations.update(row.accommodationId, patch)
+    return
+  }
+  if (!patch.creditCode) return
+  const existing = await db.accommodations.where('creditCode').equals(patch.creditCode).first()
+  if (existing) {
+    await db.accommodations.update(existing.id, patch)
+    await db.censusRecords.update(row.id, { accommodationId: existing.id })
+    row.accommodationId = existing.id
+  } else {
+    const id = await db.accommodations.add({ ...patch, creditCode: patch.creditCode, createdAt: new Date().toISOString() })
+    await db.censusRecords.update(row.id, { accommodationId: id })
+    row.accommodationId = id
+  }
+}
+
+function parseArray(raw) {
+  try { return Array.isArray(raw) ? raw : JSON.parse(raw || '[]') } catch { return [] }
+}
+
+function areaNames(codes) {
+  if (!codes?.length) return '-'
+  return codes.map(code => storeAreaName(code)).join('、')
+}
+
+function storeAreaName(code) {
+  return areaStore.getAreaName(code)
+}
+
+function formatFieldValue(key, field, value) {
+  if (key === 'location' && value) return activeForm.value.locationAddress || '移动端已采集定位，经纬度已存储'
+  if (field.type === 'photo') return value ? (activeForm.value.businessLicensePhotoName || '已上传图片') : ''
+  if (field.type === 'signature') return value ? '已签字' : ''
+  if (field.type === 'photos') return Array.isArray(value) && value.length ? value.map((photo, index) => photo.name || `现场照片${index + 1}.jpg`).join('、') : ''
+  if (['select', 'radio', 'checkbox'].includes(field.type)) return getOptionLabel(key, value)
+  if (Array.isArray(value)) return value.join('、')
+  return value
+}
+
+function exportRecords() {
+  const headers = ['单位名称', '信用代码', '状态', '提交来源', '提交时间']
+  const fieldKeys = COLLECTION_MODULES
+    .filter(module => module.key !== 'PREVIEW')
+    .flatMap(module => module.fields)
+  const csvRows = [
+    [...headers, ...fieldKeys.map(key => COLLECTION_FIELD_MAP[key].label)],
+    ...records.value.map(record => {
+      let data = {}
+      try { data = JSON.parse(record.formData || '{}') } catch { data = {} }
+      return [
+        record.unitName || '',
+        record.creditCode || '',
+        record.status || '',
+        record.source || '',
+        record.submittedAt || record.updatedAt || '',
+        ...fieldKeys.map(key => formatFieldValue(key, COLLECTION_FIELD_MAP[key], data[key]) || ''),
+      ]
+    }),
+  ]
+  const csv = csvRows.map(row => row.map(cell => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(',')).join('\n')
+  const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${store.currentTask?.title || '采集记录'}-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+</script>
+
+<style scoped>
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.record-section {
+  margin-bottom: 18px;
+}
+
+.record-section h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  color: #1f2937;
+}
+</style>

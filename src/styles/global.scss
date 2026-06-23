@@ -1,0 +1,364 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #app {
+  width: 100%;
+  height: 100%;
+  font-family: "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+  font-size: 14px;
+  color: #333;
+  background: #f0f2f5;
+}
+
+// 自定义滚动条
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+// 页面通用样式
+.page-container {
+  padding: 20px;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.page-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+// 卡片通用
+.filter-card {
+  margin-bottom: 16px;
+}
+
+// 表单对话框
+.form-dialog {
+  .el-dialog__body {
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+}
+
+// ==================== 移动端样式 ====================
+$mobile-primary: #1a5fc5;
+$mobile-bg: #f5f6fa;
+$mobile-card-bg: #ffffff;
+$mobile-text: #333333;
+$mobile-text-secondary: #909399;
+$tab-bar-height: 56px;
+$nav-bar-height: 46px;
+$card-radius: 12px;
+$card-margin: 12px;
+
+// 移动端布局根
+.mobile-app {
+  width: 100vw;
+  height: 100vh;
+  max-width: 750px;
+  margin: 0 auto;
+  background: $mobile-bg;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+
+  // 内容区
+  .mobile-content {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: $tab-bar-height + 12px;
+  }
+}
+
+// 移动端卡片
+.m-card {
+  background: $mobile-card-bg;
+  border-radius: $card-radius;
+  margin: $card-margin;
+  padding: 16px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+// 移动端按钮（更大触控区）
+.m-btn {
+  height: 44px;
+  font-size: 16px;
+  border-radius: 10px;
+}
+
+// 移动端表单项
+.m-form-group {
+  margin-bottom: 16px;
+
+  .m-form-label {
+    font-size: 14px;
+    color: $mobile-text;
+    margin-bottom: 8px;
+    font-weight: 500;
+
+    .required {
+      color: #f56c6c;
+      margin-right: 2px;
+    }
+  }
+}
+
+// 移动端输入框
+.m-input {
+  width: 100%;
+  height: 44px;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  padding: 0 12px;
+  font-size: 15px;
+  outline: none;
+  transition: border-color 0.2s;
+  background: #fff;
+
+  &:focus {
+    border-color: $mobile-primary;
+  }
+
+  &::placeholder {
+    color: #c0c4cc;
+  }
+}
+
+.m-textarea {
+  width: 100%;
+  min-height: 80px;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 15px;
+  outline: none;
+  resize: vertical;
+  font-family: inherit;
+  transition: border-color 0.2s;
+
+  &:focus {
+    border-color: $mobile-primary;
+  }
+}
+
+// 移动端选择器（伪装为原生选择框外观）
+.m-select {
+  width: 100%;
+  height: 44px;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  padding: 0 12px;
+  font-size: 15px;
+  background: #fff;
+  appearance: none;
+  outline: none;
+
+  &:focus {
+    border-color: $mobile-primary;
+  }
+}
+
+// 移动端开关行
+.m-switch-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid #f0f0f0;
+
+  .m-switch-label {
+    font-size: 15px;
+    color: $mobile-text;
+  }
+}
+
+// 移动端步骤条简化
+.m-steps {
+  display: flex;
+  justify-content: space-between;
+  padding: 16px;
+  background: #fff;
+
+  .m-step {
+    flex: 1;
+    text-align: center;
+    position: relative;
+
+    .m-step-dot {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #e0e0e0;
+      color: #fff;
+      font-size: 12px;
+      line-height: 24px;
+      margin: 0 auto 6px;
+      transition: all 0.3s;
+
+      &.active {
+        background: $mobile-primary;
+      }
+
+      &.done {
+        background: #67c23a;
+      }
+    }
+
+    .m-step-title {
+      font-size: 12px;
+      color: $mobile-text-secondary;
+
+      &.active {
+        color: $mobile-primary;
+        font-weight: 600;
+      }
+
+      &.done {
+        color: #67c23a;
+      }
+    }
+
+    // 连接线
+    &:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      top: 12px;
+      right: -50%;
+      width: 100%;
+      height: 2px;
+      background: #e0e0e0;
+      z-index: 0;
+    }
+
+    &.done:not(:last-child)::after {
+      background: #67c23a;
+    }
+  }
+}
+
+// 移动端底部固定操作栏
+.m-bottom-bar {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 750px;
+  padding: 10px 16px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  background: #fff;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.06);
+  display: flex;
+  gap: 10px;
+  z-index: 100;
+
+  .el-button {
+    flex: 1;
+    height: 44px;
+    font-size: 16px;
+    border-radius: 10px;
+  }
+}
+
+// 移动端列表项
+.m-list-item {
+  display: flex;
+  align-items: center;
+  padding: 14px 16px;
+  background: #fff;
+  border-bottom: 1px solid #f5f5f5;
+
+  &:active {
+    background: #f5f7fa;
+  }
+
+  .m-list-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 12px;
+    flex-shrink: 0;
+  }
+
+  .m-list-content {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .m-list-title {
+    font-size: 15px;
+    color: $mobile-text;
+    font-weight: 500;
+  }
+
+  .m-list-desc {
+    font-size: 13px;
+    color: $mobile-text-secondary;
+    margin-top: 4px;
+  }
+
+  .m-list-arrow {
+    color: #c0c4cc;
+    font-size: 14px;
+    flex-shrink: 0;
+    margin-left: 8px;
+  }
+}
+
+// 快捷入口网格
+.m-grid-entry {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  padding: 16px;
+
+  .m-grid-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+
+    .m-grid-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+    }
+
+    .m-grid-text {
+      font-size: 12px;
+      color: $mobile-text;
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "name": "accommodation-census-system",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "package": "npm run build && powershell -Command \"Compress-Archive -Path 'dist\\*' -DestinationPath 'accommodation-census-system-dist.zip' -Force\""
+  },
+  "dependencies": {
+    "vue": "^3.5.13",
+    "vue-router": "^4.5.0",
+    "pinia": "^3.0.1",
+    "element-plus": "^2.9.1",
+    "@element-plus/icons-vue": "^2.3.1",
+    "dexie": "^4.0.11",
+    "echarts": "^5.6.0",
+    "xlsx": "^0.18.5",
+    "file-saver": "^2.0.5",
+    "@vueuse/core": "^12.5.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.7",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "sass": "^1.83.4",
+    "unplugin-auto-import": "^21.0.0",
+    "unplugin-vue-components": "^32.0.0"
+  }
+}
