@@ -62,7 +62,7 @@ const mapData = ref([])
 
 async function loadData() {
   await areaStore.fetchAreas()
-  const raw = await db.accommodations.toArray()
+  const raw = (await db.accommodations.toArray()).filter(item => !item.deletedAt)
   allAccommodations.value = filterByScope(raw, authStore.userRole, authStore.userAreaCode)
   recompute()
 }

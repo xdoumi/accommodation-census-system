@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import db from '@/db'
 import { useAuthStore } from './auth'
 import { inUserScope } from '@/utils/dataScope'
+import { archiveAccommodation } from '@/utils/accommodationWorkflow'
 
 export const useAccommodationStore = defineStore('accommodation', () => {
   const list = ref([])
@@ -26,6 +27,7 @@ export const useAccommodationStore = defineStore('accommodation', () => {
     return db.accommodations.filter(item => {
       // 区域范围过滤（统一走 dataScope 工具）
       if (!inUserScope(item, auth.userRole, auth.userAreaCode)) return false
+      if (item.deletedAt) return false
 
       // 关键词过滤
       if (filters.value.keyword) {
@@ -109,7 +111,7 @@ export const useAccommodationStore = defineStore('accommodation', () => {
 
   async function remove(id) {
     const item = await db.accommodations.get(Number(id))
-    await db.accommodations.delete(Number(id))
+    await archiveAccommodation(Number(id))
     await logOperation('delete', id, `删除住宿单位：${item?.name}`)
   }
 

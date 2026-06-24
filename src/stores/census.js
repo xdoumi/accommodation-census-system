@@ -31,8 +31,7 @@ export const useCensusStore = defineStore('census', () => {
           ? JSON.parse(task.scopeAreaCodes || task.assignedAreaCodes || '[]')
           : JSON.parse(task.assignedAreaCodes || '[]')
         if (auth.userRole === 'city_admin') return areaCodes.some(c => c === auth.userAreaCode)
-        if (auth.userRole === 'county_admin') return areaCodes.some(c => c.startsWith(auth.userAreaCode.substring(0, 4)))
-        if (['reviewer'].includes(auth.userRole)) return true
+        if (auth.userRole === 'county_admin') return areaCodes.some(c => c === auth.userAreaCode || c.startsWith(auth.userAreaCode.substring(0, 4)))
         return false
       })
 
@@ -56,9 +55,11 @@ export const useCensusStore = defineStore('census', () => {
           subTasks.value = await db.censusTasks.where('parentTaskId').equals(Number(id)).toArray()
           const subTaskIds = subTasks.value.map(t => t.id)
           assignments.value = await fetchAssignmentsByTaskIds(subTaskIds)
+          assignments.value = await hydrateAssignmentStats(assignments.value)
         } else {
           subTasks.value = []
           assignments.value = await db.censusAssignments.where('taskId').equals(Number(id)).toArray()
+          assignments.value = await hydrateAssignmentStats(assignments.value)
         }
       } else {
         assignments.value = []
@@ -128,10 +129,22 @@ export const useCensusStore = defineStore('census', () => {
     const now = new Date().toISOString()
     const areaCodes = JSON.parse(task.assignedAreaCodes || '[]')
     const responsibleUserIds = JSON.parse(task.responsibleUserIds || '[]')
+    const cityAdminIds = JSON.parse(task.cityAdminIds || '[]')
+    const countyAdminIds = JSON.parse(task.countyAdminIds || '[]')
     const assignedTo = responsibleUserIds[0] || null
     for (const areaCode of areaCodes) {
       const existing = await db.censusAssignments.where({ taskId: Number(taskId), areaCode }).first()
       const area = await db.areas.get(areaCode)
+      const targetUnits = await getUnitsForAssignedArea(areaCode)
+      const targetAccommodationIds = targetUnits.map(item => item.id)
+      const spotCheckCount = targetUnits.filter(item => item.checkType === 'catalog_spot_check').length
+      const importedCheckCount = targetUnits.filter(item => item.checkType === 'imported_catalog').length
+      const unitPatch = {
+        targetAccommodationIds: JSON.stringify(targetAccommodationIds),
+        unitCount: targetAccommodationIds.length,
+        spotCheckCount,
+        importedCheckCount,
+      }
       if (!existing) {
         await db.censusAssignments.add({
           taskId: Number(taskId),
@@ -141,12 +154,17 @@ export const useCensusStore = defineStore('census', () => {
           assignedTo,
           assignedToIds: JSON.stringify(responsibleUserIds),
           assignedToName: task.responsibleUserNames || '',
+          cityAdminIds: JSON.stringify(cityAdminIds),
+          cityAdminNames: task.cityAdminNames || '',
+          countyAdminIds: JSON.stringify(countyAdminIds),
+          countyAdminNames: task.countyAdminNames || '',
           status: 'pending',
           progress: 0,
           submittedAt: null,
           reviewedBy: null,
           reviewedAt: null,
           reviewComment: null,
+          ...unitPatch,
           createdAt: now,
           updatedAt: now,
         })
@@ -155,10 +173,46 @@ export const useCensusStore = defineStore('census', () => {
           assignedTo,
           assignedToIds: JSON.stringify(responsibleUserIds),
           assignedToName: task.responsibleUserNames || '',
+          cityAdminIds: JSON.stringify(cityAdminIds),
+          cityAdminNames: task.cityAdminNames || '',
+          countyAdminIds: JSON.stringify(countyAdminIds),
+          countyAdminNames: task.countyAdminNames || '',
+          ...unitPatch,
           updatedAt: now,
         })
       }
     }
+  }
+
+  async function getUnitsForAssignedArea(areaCode) {
+    const area = await db.areas.get(areaCode)
+    const list = await db.accommodations.filter(item => {
+      if (item.deletedAt) return false
+      if (area?.level === 1 || areaCode === '520000') return true
+      if (area?.level === 2 || areaCode.endsWith('00')) return item.cityCode === areaCode
+      return item.countyCode === areaCode
+    }).toArray()
+    return list
+  }
+
+  async function hydrateAssignmentStats(list = []) {
+    const result = []
+    for (const assignment of list) {
+      if (Number(assignment.unitCount || 0) > 0 && assignment.targetAccommodationIds) {
+        result.push(assignment)
+        continue
+      }
+      const targetUnits = await getUnitsForAssignedArea(assignment.areaCode)
+      const patch = {
+        targetAccommodationIds: JSON.stringify(targetUnits.map(item => item.id)),
+        unitCount: targetUnits.length,
+        spotCheckCount: targetUnits.filter(item => item.checkType === 'catalog_spot_check').length,
+        importedCheckCount: targetUnits.filter(item => item.checkType === 'imported_catalog').length,
+      }
+      await db.censusAssignments.update(assignment.id, patch)
+      result.push({ ...assignment, ...patch })
+    }
+    return result
   }
 
   async function startTask(id) {
@@ -284,18 +338,15 @@ export const useCensusStore = defineStore('census', () => {
         try { return JSON.parse(a.assignedToIds || '[]').includes(uid) } catch { return false }
       })
     } else {
-      // 县级/市级/审核员：本辖区
+      // 县级/市级：本辖区
       const all = await db.censusAssignments.toArray()
       assignments.value = all.filter(a => {
         if (auth.userRole === 'county_admin') return a.areaCode === auth.userAreaCode
         if (auth.userRole === 'city_admin') return a.areaCode.startsWith(auth.userAreaCode.substring(0, 4))
-        if (auth.userRole === 'reviewer') {
-          if (auth.userAreaCode === '520000') return true
-          return a.areaCode.startsWith(auth.userAreaCode.substring(0, 4))
-        }
         return false
       })
     }
+    assignments.value = await hydrateAssignmentStats(assignments.value)
     return assignments.value
   }
 

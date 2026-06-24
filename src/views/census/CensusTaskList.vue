@@ -18,6 +18,9 @@
         <el-table-column prop="deadline" label="截止日期" width="120" align="center">
           <template #default="{ row }">{{ formatDate(row.deadline) }}</template>
         </el-table-column>
+        <el-table-column prop="startDate" label="开始日期" width="120" align="center">
+          <template #default="{ row }">{{ formatDate(row.startDate) || '-' }}</template>
+        </el-table-column>
         <el-table-column label="任务范围" min-width="160" show-overflow-tooltip>
           <template #default="{ row }">{{ formatScope(row) }}</template>
         </el-table-column>
@@ -33,7 +36,7 @@
             <el-button link type="primary" size="small" @click="router.push(`/census/${row.id}/edit`)" v-if="row.status === 'draft' && authStore.hasPermission('census:update')">编辑</el-button>
             <el-button link type="success" size="small" @click="handlePublish(row)" v-if="row.status === 'draft' && authStore.hasPermission('census:create')">发布</el-button>
             <el-button link type="success" size="small" @click="handleComplete(row)" v-if="row.status === 'in_progress' && authStore.hasPermission('census:update')">完成</el-button>
-            <el-button link type="danger" size="small" @click="handleDelete(row)" v-if="row.status === 'draft' && authStore.hasPermission('census:update')">删除</el-button>
+            <el-button link type="danger" size="small" @click="handleDelete(row)" v-if="row.status === 'draft' && authStore.hasPermission('census:delete')">删除</el-button>
           </template>
         </el-table-column>
       </el-table>

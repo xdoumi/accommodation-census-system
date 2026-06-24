@@ -28,14 +28,6 @@ export function inUserScope(item, role, userAreaCode) {
     case 'enumerator':
       // 县级/普查员：本县
       return item.countyCode === userAreaCode
-    case 'reviewer': {
-      // 审核员：areaCode 可能是省/市/县级
-      if (userAreaCode === '520000') return true               // 省级审核员
-      if (userAreaCode.endsWith('00')) {                       // 市级审核员
-        return getCityPrefix(item.cityCode) === getCityPrefix(userAreaCode)
-      }
-      return item.countyCode === userAreaCode                  // 县级审核员
-    }
     default:
       return false
   }

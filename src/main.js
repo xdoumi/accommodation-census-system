@@ -7,7 +7,7 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 
 import App from './App.vue'
 import router from './router'
-import { seedDatabase } from './db/seed'
+import { clearBusinessData, seedDatabase } from './db/seed'
 import db from './db'
 import { vPermission } from './directives/permission'
 import './styles/global.scss'
@@ -37,8 +37,37 @@ offlineQueue.start()
 // 启动时若已在线则立即尝试 flush 之前未发送的草稿
 if (navigator.onLine) offlineQueue.flush()
 
-// 先初始化演示数据，再挂载应用（失败也要挂载，避免白屏）
+function shouldResetBusinessData() {
+  return window.location.href.includes('resetBusinessData=1')
+}
+
+function clearBusinessLocalStorage() {
+  const prefixes = ['collection_form_', 'mobile_submit_context']
+  const exactKeys = ['census_offline_queue_v1']
+  Object.keys(localStorage).forEach(key => {
+    if (exactKeys.includes(key) || prefixes.some(prefix => key.startsWith(prefix))) {
+      localStorage.removeItem(key)
+    }
+  })
+}
+
+function removeResetParamFromUrl() {
+  const url = new URL(window.location.href)
+  url.searchParams.delete('resetBusinessData')
+  const hash = url.hash.replace(/[?&]resetBusinessData=1/g, '').replace('?&', '?').replace(/\?$/, '')
+  url.hash = hash
+  window.history.replaceState({}, '', url.toString())
+}
+
+// 先初始化基础数据，再挂载应用（失败也要挂载，避免白屏）
 seedDatabase(db)
+  .then(async () => {
+    if (!shouldResetBusinessData()) return
+    await clearBusinessData(db)
+    clearBusinessLocalStorage()
+    removeResetParamFromUrl()
+    console.info('[Reset] 已清空住宿单位、任务、填报审核记录和移动端草稿，保留用户与贵州区划。')
+  })
   .catch(err => {
     console.error('[Seed] 数据初始化失败，应用将以空数据启动：', err)
   })

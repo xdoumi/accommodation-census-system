@@ -28,8 +28,8 @@ export const useUserStore = defineStore('user', () => {
         allUsers = allUsers.filter(u => u.areaCode?.startsWith(auth.userAreaCode.substring(0, 4)))
       } else if (auth.userRole === 'county_admin') {
         allUsers = allUsers.filter(u => u.areaCode === auth.userAreaCode)
-      } else if (['enumerator', 'reviewer'].includes(auth.userRole)) {
-        allUsers = [] // 普查员和审核员不能管理用户
+      } else if (['enumerator'].includes(auth.userRole)) {
+        allUsers = [] // 普查员不能管理用户
       }
 
       // 关键词过滤

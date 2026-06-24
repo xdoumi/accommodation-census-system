@@ -5,7 +5,7 @@
       <el-avatar :size="64" :icon="UserFilled" style="background: #1a5fc5; margin-bottom: 12px;" />
       <h3 style="margin: 0; font-size: 18px;">{{ authStore.currentUser?.realName }}</h3>
       <p style="color: #909399; margin-top: 4px; font-size: 14px;">
-        {{ ROLE_MAP[authStore.userRole] }} · {{ authStore.currentUser?.areaName }}
+        {{ getRoleLabel(authStore.userRole) }} · {{ authStore.currentUser?.areaName }}
       </p>
       <p style="color: #c0c4cc; margin-top: 2px; font-size: 13px;">
         @{{ authStore.currentUser?.username }}
@@ -48,7 +48,7 @@
 <script setup>
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { ROLE_MAP } from '@/utils/constants'
+import { getRoleLabel } from '@/utils/constants'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import db from '@/db'
 

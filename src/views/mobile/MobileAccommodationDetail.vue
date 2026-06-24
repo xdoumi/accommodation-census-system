@@ -16,12 +16,12 @@
             <div style="font-size: 12px; color: #909399;">客房</div>
           </div>
           <div style="text-align: center;">
-            <div style="font-size: 20px; font-weight: 700; color: #67c23a;">{{ unit.occupancyRate }}%</div>
-            <div style="font-size: 12px; color: #909399;">入住率</div>
+            <div style="font-size: 20px; font-weight: 700; color: #67c23a;">{{ unit.beds || 0 }}</div>
+            <div style="font-size: 12px; color: #909399;">床位</div>
           </div>
           <div style="text-align: center;">
-            <div style="font-size: 20px; font-weight: 700; color: #e6a23c;">¥{{ unit.adr }}</div>
-            <div style="font-size: 12px; color: #909399;">均价</div>
+            <div style="font-size: 20px; font-weight: 700; color: #e6a23c;">{{ unit.staffCount || 0 }}</div>
+            <div style="font-size: 12px; color: #909399;">从业人员</div>
           </div>
           <div style="text-align: center;">
             <div style="font-size: 20px; font-weight: 700; color: #909399;">{{ unit.staffCount }}</div>

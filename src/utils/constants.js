@@ -65,16 +65,43 @@ export const HEALTH_PERMIT_OPTIONS = [
 export const HEALTH_PERMIT_MAP = Object.fromEntries(HEALTH_PERMIT_OPTIONS.map(h => [h.value, h.label]))
 
 // 角色选项
-export const ROLE_OPTIONS = [
+export const BUILTIN_ROLE_OPTIONS = [
   { value: 'super_admin', label: '超级管理员' },
   { value: 'provincial_admin', label: '省级管理员' },
   { value: 'city_admin', label: '市级管理员' },
   { value: 'county_admin', label: '县级管理员' },
   { value: 'enumerator', label: '普查员' },
-  { value: 'reviewer', label: '审核员' },
 ]
 
+export const ROLE_CONFIG_STORAGE_KEY = 'census_role_options'
+export const ROLE_OPTIONS = BUILTIN_ROLE_OPTIONS
 export const ROLE_MAP = Object.fromEntries(ROLE_OPTIONS.map(r => [r.value, r.label]))
+export const BUILTIN_ROLE_KEYS = BUILTIN_ROLE_OPTIONS.map(r => r.value)
+
+export function loadRoleOptions() {
+  try {
+    const raw = localStorage.getItem(ROLE_CONFIG_STORAGE_KEY)
+    if (!raw) return [...BUILTIN_ROLE_OPTIONS]
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return [...BUILTIN_ROLE_OPTIONS]
+    const withoutReviewer = parsed.filter(role => role?.value && role.value !== 'reviewer')
+    const map = new Map(BUILTIN_ROLE_OPTIONS.map(role => [role.value, role]))
+    withoutReviewer.forEach(role => {
+      if (!map.has(role.value)) map.set(role.value, { value: role.value, label: role.label || role.value })
+    })
+    return Array.from(map.values())
+  } catch {
+    return [...BUILTIN_ROLE_OPTIONS]
+  }
+}
+
+export function saveRoleOptions(roles) {
+  localStorage.setItem(ROLE_CONFIG_STORAGE_KEY, JSON.stringify(roles.filter(role => role.value !== 'reviewer')))
+}
+
+export function getRoleLabel(role) {
+  return loadRoleOptions().find(item => item.value === role)?.label || role || '-'
+}
 
 // 用户状态
 export const USER_STATUS_OPTIONS = [

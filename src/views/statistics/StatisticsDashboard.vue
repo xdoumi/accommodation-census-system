@@ -21,9 +21,6 @@
 
         <el-row :gutter="16" style="margin-bottom: 20px;">
           <el-col :span="6">
-            <KpiCard icon="Warning" :value="complianceIssueCount" label="待整改单位" color="#f56c6c" />
-          </el-col>
-          <el-col :span="6">
             <KpiCard icon="CircleCheck" :value="operatingRate" label="正常营业率" color="#13c2c2" formatter="percent" />
           </el-col>
         </el-row>
@@ -123,12 +120,6 @@ import AiComparePanel from '@/components/ai/AiComparePanel.vue'
 const statisticsStore = useStatisticsStore()
 const { dashboardData: data } = storeToRefs(statisticsStore)
 const activeTab = ref('overview')
-
-const complianceIssueCount = computed(() => {
-  return (data.value.rawAccommodations || []).filter(a =>
-    a.fireInspection !== 'passed' || a.healthPermit !== 'valid' || !a.hasEmergencyPlan
-  ).length
-})
 
 const operatingRate = computed(() => {
   const total = data.value.totalUnits

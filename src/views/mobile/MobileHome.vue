@@ -5,7 +5,7 @@
       <div style="display: flex; justify-content: space-between; align-items: center;">
         <div>
           <h2 style="margin: 0; font-size: 20px; font-weight: 600;">{{ greeting }}，{{ authStore.currentUser?.realName }}</h2>
-          <p style="margin: 6px 0 0; opacity: 0.85; font-size: 14px;">{{ authStore.currentUser?.areaName }} · {{ ROLE_MAP[authStore.userRole] }}</p>
+          <p style="margin: 6px 0 0; opacity: 0.85; font-size: 14px;">{{ authStore.currentUser?.areaName }} · {{ getRoleLabel(authStore.userRole) }}</p>
         </div>
         <el-avatar :size="48" :icon="UserFilled" style="background: rgba(255,255,255,0.2);" />
       </div>
@@ -35,6 +35,25 @@
       </el-row>
     </div>
 
+    <div class="m-card progress-card">
+      <div class="progress-row">
+        <div>
+          <div class="progress-title">任务执行进度</div>
+          <div class="progress-sub">{{ completedAssignments }}/{{ totalAssignments }} 个分配区域完成</div>
+        </div>
+        <strong>{{ executionProgress }}%</strong>
+      </div>
+      <el-progress :percentage="executionProgress" :stroke-width="8" :show-text="false" />
+      <div class="progress-row review">
+        <div>
+          <div class="progress-title">审核进度</div>
+          <div class="progress-sub">{{ reviewedRecords }}/{{ totalRecords }} 条记录通过审核</div>
+        </div>
+        <strong>{{ reviewProgress }}%</strong>
+      </div>
+      <el-progress :percentage="reviewProgress" :stroke-width="8" :show-text="false" color="#67c23a" />
+    </div>
+
     <!-- 入口 -->
     <div class="m-card">
       <div class="m-grid-entry" style="padding: 0;">
@@ -43,33 +62,8 @@
           <span class="m-grid-text">开始填报</span>
         </div>
         <div class="m-grid-item" @click="router.push('/m/units')">
-          <div class="m-grid-icon" style="background: #e8f8ef; color: #67c23a;"><el-icon :size="22"><OfficeBuilding /></el-icon></div>
+          <div class="m-grid-icon" style="background: #eefaf1; color: #2f8f4e;"><el-icon :size="22"><OfficeBuilding /></el-icon></div>
           <span class="m-grid-text">填写清单</span>
-        </div>
-        <div class="m-grid-item" @click="router.push('/m/tasks')">
-          <div class="m-grid-icon" style="background: #fdf6ec; color: #e6a23c;"><el-icon :size="22"><Bell /></el-icon></div>
-          <span class="m-grid-text">任务提醒</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- 最近任务 -->
-    <div class="m-card">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-        <span style="font-size: 15px; font-weight: 600;">最近任务</span>
-        <el-button link type="primary" size="small" @click="router.push('/m/tasks')">查看全部</el-button>
-      </div>
-      <div v-if="recentTasks.length === 0" style="text-align: center; color: #909399; padding: 20px;">
-        暂无任务
-      </div>
-      <div v-for="task in recentTasks" :key="task.id" class="task-card" @click="router.push(`/m/tasks/${task.id}`)">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <span style="font-size: 15px; font-weight: 500; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ task.title }}</span>
-          <StatusTag :value="task.status" :options="CENSUS_TASK_STATUS_OPTIONS" />
-        </div>
-        <div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 13px; color: #909399;">
-          <span>截止：{{ formatDate(task.deadline) }}</span>
-          <span>{{ JSON.parse(task.assignedAreaCodes || '[]').length }}个区域</span>
         </div>
       </div>
     </div>
@@ -77,23 +71,22 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useCensusStore } from '@/stores/census'
 import { useStatisticsStore } from '@/stores/statistics'
-import { ROLE_MAP, CENSUS_TASK_STATUS_OPTIONS } from '@/utils/constants'
-import { formatDate } from '@/utils/formatters'
+import { getRoleLabel } from '@/utils/constants'
 import { storeToRefs } from 'pinia'
-import StatusTag from '@/components/common/StatusTag.vue'
+import db from '@/db'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const censusStore = useCensusStore()
 const statisticsStore = useStatisticsStore()
+const records = ref([])
 
 const { dashboardData: data } = storeToRefs(statisticsStore)
-const recentTasks = ref([])
 
 const greeting = computed(() => {
   const hour = new Date().getHours()
@@ -105,13 +98,27 @@ const greeting = computed(() => {
 const todoCount = computed(() => censusStore.assignments.filter(a => a.status === 'pending').length)
 const inProgressCount = computed(() => censusStore.assignments.filter(a => ['in_progress', 'submitted'].includes(a.status)).length)
 const completedCount = computed(() => censusStore.assignments.filter(a => a.status === 'reviewed').length)
+const totalAssignments = computed(() => censusStore.assignments.length)
+const completedAssignments = computed(() => censusStore.assignments.filter(a => ['submitted', 'reviewed', 'completed'].includes(a.status) || Number(a.progress) >= 100).length)
+const executionProgress = computed(() => totalAssignments.value ? Math.round(censusStore.assignments.reduce((sum, item) => sum + Number(item.progress || 0), 0) / totalAssignments.value) : 0)
+const totalRecords = computed(() => records.value.length)
+const reviewedRecords = computed(() => records.value.filter(record => ['available', 'approved'].includes(record.status)).length)
+const reviewProgress = computed(() => totalRecords.value ? Math.round(reviewedRecords.value / totalRecords.value * 100) : 0)
 
 onMounted(async () => {
   await censusStore.fetchMyAssignments()
-  await censusStore.fetchTasks()
-  recentTasks.value = censusStore.tasks.slice(0, 3)
   await statisticsStore.fetchDashboardData()
+  await loadRecords()
 })
+
+async function loadRecords() {
+  const assignmentIds = censusStore.assignments.map(item => item.id)
+  const list = []
+  for (const assignmentId of assignmentIds) {
+    list.push(...await db.censusRecords.where('assignmentId').equals(assignmentId).toArray())
+  }
+  records.value = list
+}
 </script>
 
 <style lang="scss" scoped>
@@ -131,13 +138,34 @@ onMounted(async () => {
   }
 }
 
-.task-card {
-  padding: 12px;
-  border-radius: 10px;
-  background: #f9fafc;
-  margin-bottom: 8px;
+.progress-card {
+  .progress-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 12px;
+    margin-bottom: 8px;
 
-  &:last-child { margin-bottom: 0; }
-  &:active { background: #f0f2f5; }
+    &.review {
+      margin-top: 16px;
+    }
+
+    strong {
+      color: #1a5fc5;
+      font-size: 18px;
+    }
+  }
+
+  .progress-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: #1f2937;
+  }
+
+  .progress-sub {
+    margin-top: 3px;
+    font-size: 12px;
+    color: #909399;
+  }
 }
 </style>

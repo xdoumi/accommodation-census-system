@@ -3,7 +3,7 @@
     <div class="login-header">
       <el-icon :size="48" color="#1a5fc5"><OfficeBuilding /></el-icon>
       <h1>住宿业普查</h1>
-      <p>文化和旅游厅</p>
+      <p>贵州省文化和旅游厅</p>
     </div>
 
     <div class="login-form">

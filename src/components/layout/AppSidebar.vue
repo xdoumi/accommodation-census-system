@@ -25,6 +25,8 @@
         </template>
         <el-menu-item index="/accommodation">单位列表</el-menu-item>
         <el-menu-item index="/accommodation-import" v-if="authStore.hasPermission('accommodation:import')">批量导入</el-menu-item>
+        <el-menu-item index="/accommodation-review" v-if="authStore.hasPermission('census:review')">审核单位列表</el-menu-item>
+        <el-menu-item index="/accommodation-deleted" v-if="authStore.hasPermission('accommodation:delete')">删除管理</el-menu-item>
       </el-sub-menu>
 
       <el-sub-menu index="census" v-if="authStore.hasPermission('census:view')">

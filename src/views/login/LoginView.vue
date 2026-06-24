@@ -4,7 +4,7 @@
       <div class="login-header">
         <el-icon :size="40" color="#1a5fc5"><OfficeBuilding /></el-icon>
         <h1>住宿业普查管理系统</h1>
-        <p>文化和旅游厅</p>
+        <p>贵州省文化和旅游厅</p>
       </div>
       <el-form ref="formRef" :model="form" :rules="rules" class="login-form" @keyup.enter="handleLogin">
         <el-form-item prop="username">

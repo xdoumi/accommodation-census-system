@@ -8,6 +8,9 @@ import { filterByScope } from '@/utils/dataScope'
 export const useStatisticsStore = defineStore('statistics', () => {
   const dashboardData = ref({
     totalUnits: 0,
+    spotCheckUnits: 0,
+    importedCheckUnits: 0,
+    newUnits: 0,
     categoryBreakdown: [],
     regionBreakdown: [],
     totalRooms: 0,
@@ -28,8 +31,9 @@ export const useStatisticsStore = defineStore('statistics', () => {
     try {
       const auth = useAuthStore()
       const allRaw = await db.accommodations.toArray()
+      const allUnitsFull = allRaw.filter(item => !item.deletedAt)
       // 区域范围过滤（统一走 dataScope）
-      const allAccommodations = filterByScope(allRaw, auth.userRole, auth.userAreaCode)
+      const allAccommodations = filterByScope(allUnitsFull, auth.userRole, auth.userAreaCode)
 
       // 类别分布
       const categoryMap = {}
@@ -100,7 +104,10 @@ export const useStatisticsStore = defineStore('statistics', () => {
       }
 
       dashboardData.value = {
-        totalUnits: allAccommodations.length,
+        totalUnits: allUnitsFull.length,
+        spotCheckUnits: allUnitsFull.filter(item => item.checkType === 'catalog_spot_check').length,
+        importedCheckUnits: allUnitsFull.filter(item => item.checkType === 'imported_catalog').length,
+        newUnits: allUnitsFull.filter(item => item.checkType === 'new_catalog').length,
         categoryBreakdown,
         regionBreakdown,
         totalRooms: allAccommodations.reduce((s, a) => s + (a.rooms || 0), 0),

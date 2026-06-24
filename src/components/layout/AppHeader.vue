@@ -39,7 +39,7 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { ROLE_MAP } from '@/utils/constants'
+import { getRoleLabel } from '@/utils/constants'
 import { UserFilled } from '@element-plus/icons-vue'
 import { ElMessageBox } from 'element-plus'
 
@@ -49,7 +49,7 @@ defineEmits(['toggle-sidebar'])
 const router = useRouter()
 const authStore = useAuthStore()
 
-const roleLabel = computed(() => ROLE_MAP[authStore.userRole] || '')
+const roleLabel = computed(() => getRoleLabel(authStore.userRole))
 
 async function handleCommand(command) {
   if (command === 'logout') {

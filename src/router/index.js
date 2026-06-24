@@ -50,6 +50,18 @@ const routes = [
         component: () => import('@/views/accommodation/AccommodationImport.vue'),
         meta: { title: '批量导入', permission: 'accommodation:import', parent: 'AccommodationList' },
       },
+      {
+        path: 'accommodation-review',
+        name: 'AccommodationReviewList',
+        component: () => import('@/views/accommodation/AccommodationReviewList.vue'),
+        meta: { title: '审核单位列表', permission: 'census:review', parent: 'AccommodationList' },
+      },
+      {
+        path: 'accommodation-deleted',
+        name: 'AccommodationDeletedList',
+        component: () => import('@/views/accommodation/AccommodationDeletedList.vue'),
+        meta: { title: '删除管理', permission: 'accommodation:delete', parent: 'AccommodationList' },
+      },
       // 普查任务
       {
         path: 'census',
@@ -162,6 +174,18 @@ const routes = [
         name: 'MobileTaskDetail',
         component: () => import('@/views/mobile/MobileTaskDetail.vue'),
         meta: { title: '任务详情', permission: 'census:view', mobile: true },
+      },
+      {
+        path: 'entry/:taskId/:assignmentId/preview',
+        name: 'MobileDataPreview',
+        component: () => import('@/views/mobile/MobileDataPreview.vue'),
+        meta: { title: '提交预览', permission: 'census:fill', mobile: true },
+      },
+      {
+        path: 'entry/:taskId/:assignmentId/sign',
+        name: 'MobileDataSign',
+        component: () => import('@/views/mobile/MobileDataSign.vue'),
+        meta: { title: '签字确认', permission: 'census:fill', mobile: true },
       },
       {
         path: 'entry/:taskId/:assignmentId?',

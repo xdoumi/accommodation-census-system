@@ -7,7 +7,7 @@
         </el-form-item>
         <el-form-item label="角色">
           <el-select v-model="userStore.filters.role" placeholder="全部" clearable style="width: 140px">
-            <el-option v-for="opt in ROLE_OPTIONS" :key="opt.value" :label="opt.label" :value="opt.value" />
+            <el-option v-for="opt in roleOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
           </el-select>
         </el-form-item>
         <el-form-item label="状态">
@@ -36,7 +36,7 @@
         <el-table-column prop="phone" label="手机号" width="130" />
         <el-table-column prop="role" label="角色" width="120" align="center">
           <template #default="{ row }">
-            <el-tag size="small">{{ ROLE_MAP[row.role] }}</el-tag>
+            <el-tag size="small">{{ getRoleLabel(row.role) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="areaName" label="管辖区域" min-width="120" />
@@ -51,10 +51,10 @@
         <el-table-column label="操作" width="200" align="center" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="router.push(`/system/users/${row.id}/edit`)" v-if="authStore.hasPermission('system:user:update')">编辑</el-button>
-            <el-button link :type="row.status === 'active' ? 'danger' : 'success'" size="small" @click="handleToggleStatus(row)">
+            <el-button link :type="row.status === 'active' ? 'danger' : 'success'" size="small" @click="handleToggleStatus(row)" v-if="authStore.hasPermission('system:user:status')">
               {{ row.status === 'active' ? '禁用' : '启用' }}
             </el-button>
-            <el-button link type="warning" size="small" @click="handleResetPassword(row)">重置密码</el-button>
+            <el-button link type="warning" size="small" @click="handleResetPassword(row)" v-if="authStore.hasPermission('system:user:reset_password')">重置密码</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -76,18 +76,19 @@
 </template>
 
 <script setup>
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ROLE_OPTIONS, ROLE_MAP, USER_STATUS_OPTIONS } from '@/utils/constants'
+import { getRoleLabel, loadRoleOptions, USER_STATUS_OPTIONS } from '@/utils/constants'
 import { formatDateTime } from '@/utils/formatters'
 import StatusTag from '@/components/common/StatusTag.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
 const authStore = useAuthStore()
+const roleOptions = computed(() => loadRoleOptions())
 
 onMounted(() => {
   userStore.fetchUsers()

@@ -19,9 +19,6 @@ export function useArea() {
     if (role === 'county_admin' || role === 'enumerator') {
       return { countyCode: areaCode }
     }
-    if (role === 'reviewer') {
-      return { cityCode: areaCode.substring(0, 4) + '00' }
-    }
     return {}
   })
 

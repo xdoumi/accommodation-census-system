@@ -83,7 +83,7 @@ watch(() => [exportForm.type, exportForm.category, exportForm.areaCode], () => {
 })
 
 async function loadPreview() {
-  const raw = await db.accommodations.toArray()
+  const raw = (await db.accommodations.toArray()).filter(item => !item.deletedAt)
   // 统一走 dataScope 工具做权限范围过滤
   allData = filterByScope(raw, authStore.userRole, authStore.userAreaCode)
 

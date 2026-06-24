@@ -18,6 +18,7 @@ export const COLLECTION_MODULES = [
       'registrationDate',
       'registeredStatus',
       'registeredAddress',
+      'registeredDivisionAddress',
       'registeredDivisionCode',
       'legalRepresentative',
       'legalRepresentativePhone',
@@ -31,10 +32,13 @@ export const COLLECTION_MODULES = [
       'operatingName',
       'actualOperatingStatus',
       'actualAddress',
+      'actualDivisionAddress',
       'divisionCode',
       'contactName',
       'contactPhone',
       'economyIndustryCode',
+      'isStarIndustryCode',
+      'ratingLevel',
       'stateHolding',
     ],
   },
@@ -46,7 +50,6 @@ export const COLLECTION_MODULES = [
       'buildingOwnership',
       'businessMode',
       'businessModeRemark',
-      'ratingLevel',
       'rooms',
       'beds',
       'staffCount',
@@ -67,9 +70,15 @@ export const COLLECTION_MODULES = [
   },
   {
     key: 'G',
-    title: '现场留痕与签字',
-    shortTitle: '现场留痕与签字',
-    fields: ['storefrontPhotos', 'groupPhotos', 'managerSignature'],
+    title: '现场留痕',
+    shortTitle: '现场留痕',
+    fields: ['storefrontPhotos', 'groupPhotos'],
+  },
+  {
+    key: 'SIGN',
+    title: '签字确认',
+    shortTitle: '签字确认',
+    fields: ['managerSignature', 'managerSignatureAt'],
   },
   {
     key: 'PREVIEW',
@@ -151,8 +160,9 @@ export const COLLECTION_FIELD_MAP = {
     ],
   },
   registeredAddress: { code: 'B7', label: '注册地址', required: true, type: 'textarea', maxLength: 200 },
+  registeredDivisionAddress: { code: 'B8', label: '区划地址', required: true, type: 'divisionAddress' },
   registeredDivisionCode: { code: 'B9', label: '区划代码（12位）', required: true, type: 'text', pattern: /^\d{12}$/ },
-  legalRepresentative: { code: 'B10', label: '法定代表人姓名', required: true, type: 'text', maxLength: 50 },
+  legalRepresentative: { code: 'B10', label: '法定代表人姓名', required: false, type: 'text', maxLength: 50 },
   legalRepresentativePhone: { code: 'B11', label: '法定代表人手机号', required: true, type: 'tel', pattern: /^1\d{10}$/ },
   operatingName: { code: 'C1', label: '经营单位名称', required: true, type: 'text', maxLength: 100 },
   actualOperatingStatus: {
@@ -170,12 +180,37 @@ export const COLLECTION_FIELD_MAP = {
     ],
   },
   actualAddress: { code: 'C3', label: '实际经营地址', required: true, type: 'textarea', maxLength: 200 },
-  divisionCode: { code: 'C4', label: '区划代码（12位）', required: true, type: 'text', pattern: /^\d{12}$/ },
-  contactName: { code: 'C5', label: '联系人姓名', required: false, type: 'text' },
-  contactPhone: { code: 'C6', label: '联系人手机号', required: false, type: 'tel', pattern: /^1\d{10}$/ },
-  economyIndustryCode: { code: 'C7', label: '行业代码', required: true, type: 'industry' },
+  actualDivisionAddress: { code: 'C4', label: '实际经营区划地址', required: true, type: 'divisionAddress' },
+  divisionCode: { code: 'C5', label: '实际经营区划代码（12位）', required: true, type: 'text', pattern: /^\d{12}$/ },
+  contactName: { code: 'C6', label: '联系人姓名', required: false, type: 'text' },
+  contactPhone: { code: 'C7', label: '联系人手机号', required: false, type: 'tel', pattern: /^1\d{10}$/ },
+  economyIndustryCode: { code: 'C8', label: '行业代码', required: true, type: 'industry' },
+  isStarIndustryCode: {
+    code: 'C9',
+    label: '是否为标"*"行业代码',
+    required: true,
+    type: 'radio',
+    options: [
+      { value: 'yes', label: '是' },
+      { value: 'no', label: '否' },
+    ],
+  },
+  ratingLevel: {
+    code: 'C10',
+    label: '等级评定',
+    required: true,
+    type: 'select',
+    options: [
+      { value: 'five_star', label: '五星级' },
+      { value: 'four_star', label: '四星级' },
+      { value: 'three_star', label: '三星级' },
+      { value: 'two_or_below', label: '二星级及以下' },
+      { value: 'unrated', label: '未评定' },
+      { value: 'other', label: '其他' },
+    ],
+  },
   stateHolding: {
-    code: 'C8',
+    code: 'C11',
     label: '国有经济控股情况',
     required: true,
     type: 'radio',
@@ -242,25 +277,11 @@ export const COLLECTION_FIELD_MAP = {
     requiredWhen: data => ['seasonal', 'reservation', 'mixed', 'other'].includes(data.businessMode),
     type: 'textarea',
   },
-  ratingLevel: {
-    code: 'D3',
-    label: '等级评定',
-    required: true,
-    type: 'select',
-    options: [
-      { value: 'five_star', label: '五星级' },
-      { value: 'four_star', label: '四星级' },
-      { value: 'three_star', label: '三星级' },
-      { value: 'two_or_below', label: '二星级及以下' },
-      { value: 'unrated', label: '未评定' },
-      { value: 'other', label: '其他' },
-    ],
-  },
-  rooms: { code: 'D4', label: '客房数', required: true, type: 'integer', min: 0, max: 9999 },
-  beds: { code: 'D5', label: '床位数', required: true, type: 'integer', min: 0, max: 99999 },
-  staffCount: { code: 'D6', label: '从业人员数', required: true, type: 'integer', min: 0, max: 99999 },
+  rooms: { code: 'D3', label: '客房数', required: true, type: 'integer', min: 0, max: 9999 },
+  beds: { code: 'D4', label: '床位数', required: true, type: 'integer', min: 0, max: 99999 },
+  staffCount: { code: 'D5', label: '从业人员数', required: true, type: 'integer', min: 0, max: 99999 },
   subjectType: {
-    code: 'D7',
+    code: 'D6',
     label: '调查对象类型',
     required: true,
     type: 'select',
@@ -291,7 +312,13 @@ export const COLLECTION_FIELD_MAP = {
   otaOther: { code: 'F1-a', label: '其他平台名称', requiredWhen: data => data.otaPlatforms?.includes('other'), type: 'text' },
   storefrontPhotos: { code: 'G1', label: '住宿单位门头照', required: true, type: 'photos' },
   groupPhotos: { code: 'G2', label: '核查人员与门头合影', required: true, type: 'photos' },
-  managerSignature: { code: 'G3', label: '住宿单位负责人签字', required: true, type: 'signature' },
+  managerSignature: { code: 'H1', label: '住宿单位负责人签字', required: true, type: 'signature' },
+  managerSignatureAt: {
+    code: 'H2',
+    label: '签字时间',
+    type: 'text',
+    visibleWhen: data => Boolean(data.managerSignature || data.managerSignatureAt),
+  },
 }
 
 export const COLLECTION_FIELD_LIST = Object.entries(COLLECTION_FIELD_MAP).map(([key, spec]) => ({ key, ...spec }))
@@ -361,16 +388,29 @@ export function createEmptyCollectionForm() {
     registrationDate: '',
     registeredStatus: '',
     registeredAddress: '',
+    registeredDivisionAddress: '',
     registeredDivisionCode: '',
+    registeredDivisionProvinceCode: '520000',
+    registeredDivisionCityCode: '',
+    registeredDivisionCountyCode: '',
+    registeredDivisionStreetCode: '',
+    registeredDivisionStreetName: '',
     legalRepresentative: '',
     legalRepresentativePhone: '',
     operatingName: '',
     actualOperatingStatus: '',
     actualAddress: '',
+    actualDivisionAddress: '',
     divisionCode: '',
+    divisionProvinceCode: '520000',
+    divisionCityCode: '',
+    divisionCountyCode: '',
+    divisionStreetCode: '',
+    divisionStreetName: '',
     contactName: '',
     contactPhone: '',
     economyIndustryCode: '',
+    isStarIndustryCode: '',
     stateHolding: '',
     policeSystemStatus: '',
     policeSystemReason: '',
@@ -412,14 +452,27 @@ export function buildCollectionFormFromUnit(unit = {}) {
   form.registrationDate = unit.openDate || ''
   form.registeredStatus = normalizeOperatingStatus(unit.operatingStatus)
   form.registeredAddress = unit.registeredAddress || unit.detailAddress || ''
+  form.registeredDivisionAddress = unit.registeredDivisionAddress || ''
   form.registeredDivisionCode = unit.registeredDivisionCode || unit.divisionCode || (unit.countyCode ? `${unit.countyCode}000000` : '')
+  form.registeredDivisionProvinceCode = unit.registeredDivisionProvinceCode || unit.provinceCode || '520000'
+  form.registeredDivisionCityCode = unit.registeredDivisionCityCode || unit.cityCode || ''
+  form.registeredDivisionCountyCode = unit.registeredDivisionCountyCode || unit.countyCode || ''
+  form.registeredDivisionStreetCode = unit.registeredDivisionStreetCode || (form.registeredDivisionCode ? form.registeredDivisionCode.slice(6, 9) : '')
+  form.registeredDivisionStreetName = unit.registeredDivisionStreetName || unit.divisionStreetName || ''
   form.legalRepresentative = unit.legalRepresentative || ''
   form.legalRepresentativePhone = unit.legalRepresentativePhone || ''
   form.operatingName = unit.operatingName || unit.name || ''
   form.actualOperatingStatus = normalizeOperatingStatus(unit.operatingStatus)
   form.actualAddress = unit.actualAddress || unit.detailAddress || ''
+  form.actualDivisionAddress = unit.actualDivisionAddress || ''
   form.divisionCode = unit.divisionCode || (unit.countyCode ? `${unit.countyCode}000000` : '')
+  form.divisionProvinceCode = unit.provinceCode || '520000'
+  form.divisionCityCode = unit.cityCode || ''
+  form.divisionCountyCode = unit.countyCode || ''
+  form.divisionStreetCode = unit.divisionStreetCode || (form.divisionCode ? form.divisionCode.slice(6, 9) : '')
+  form.divisionStreetName = unit.divisionStreetName || ''
   form.economyIndustryCode = unit.economyIndustryCode || unit.industryCode || inferIndustryCode(unit.category)
+  form.isStarIndustryCode = unit.isStarIndustryCode || inferStarIndustryFlag(form.economyIndustryCode)
   form.stateHolding = unit.stateHolding || ''
   form.buildingOwnership = unit.buildingOwnership || ''
   form.businessMode = unit.businessMode || inferBusinessMode(unit.operatingStatus)
@@ -481,6 +534,13 @@ function inferIndustryCode(category) {
   return categoryMap[category] || ''
 }
 
+export function inferStarIndustryFlag(industryCode) {
+  if (!industryCode) return ''
+  const option = INDUSTRY_OPTIONS.find(item => item.value === industryCode)
+  if (!option) return ''
+  return option.star ? 'yes' : 'no'
+}
+
 function inferBusinessMode(operatingStatus) {
   return operatingStatus === 'operating' ? 'stable' : ''
 }
@@ -525,7 +585,13 @@ export function extractAccommodationPatch(form) {
     detailAddress: form.actualAddress || form.registeredAddress,
     registeredName: form.registeredName,
     registeredAddress: form.registeredAddress,
+    registeredDivisionAddress: form.registeredDivisionAddress,
     registeredDivisionCode: form.registeredDivisionCode,
+    registeredDivisionProvinceCode: form.registeredDivisionProvinceCode,
+    registeredDivisionCityCode: form.registeredDivisionCityCode,
+    registeredDivisionCountyCode: form.registeredDivisionCountyCode,
+    registeredDivisionStreetCode: form.registeredDivisionStreetCode,
+    registeredDivisionStreetName: form.registeredDivisionStreetName,
     registrationDate: form.registrationDate,
     registrationAuthority: form.registrationAuthority,
     registrationAuthorityOther: form.registrationAuthorityOther,
@@ -533,6 +599,7 @@ export function extractAccommodationPatch(form) {
     operatingName: form.operatingName,
     actualOperatingStatus: form.actualOperatingStatus,
     actualAddress: form.actualAddress,
+    actualDivisionAddress: form.actualDivisionAddress,
     operatingStatus: form.actualOperatingStatus === 'operating' ? 'operating' : 'suspended',
     rooms: Number(form.rooms || 0),
     beds: Number(form.beds || 0),
@@ -540,6 +607,11 @@ export function extractAccommodationPatch(form) {
     longitude: form.location?.longitude,
     latitude: form.location?.latitude,
     divisionCode: form.divisionCode,
+    provinceCode: form.divisionProvinceCode || '520000',
+    cityCode: form.divisionCityCode,
+    countyCode: form.divisionCountyCode || String(form.divisionCode || '').slice(0, 6),
+    divisionStreetCode: form.divisionStreetCode,
+    divisionStreetName: form.divisionStreetName,
     industryCode: form.economyIndustryCode,
     legalRepresentative: form.legalRepresentative,
     legalRepresentativePhone: form.legalRepresentativePhone,
@@ -549,6 +621,7 @@ export function extractAccommodationPatch(form) {
     catalogSource: form.catalogSource,
     licenseType: form.licenseType,
     economyIndustryCode: form.economyIndustryCode,
+    isStarIndustryCode: form.isStarIndustryCode,
     stateHolding: form.stateHolding,
     buildingOwnership: form.buildingOwnership,
     businessMode: form.businessMode,

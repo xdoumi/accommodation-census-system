@@ -15,6 +15,7 @@
             <StatusTag :value="store.currentTask.status" :options="CENSUS_TASK_STATUS_OPTIONS" />
           </el-descriptions-item>
           <el-descriptions-item label="任务名称">{{ store.currentTask.title }}</el-descriptions-item>
+          <el-descriptions-item label="开始日期">{{ formatDate(store.currentTask.startDate) || '-' }}</el-descriptions-item>
           <el-descriptions-item label="截止日期">{{ formatDate(store.currentTask.deadline) }}</el-descriptions-item>
           <el-descriptions-item label="任务描述" :span="2">{{ store.currentTask.description }}</el-descriptions-item>
           <el-descriptions-item v-if="isMainTask" label="任务范围" :span="2">
@@ -39,7 +40,18 @@
             <el-table-column label="分配区域" width="110" align="center">
               <template #default="{ row }">{{ parseArray(row.assignedAreaCodes).length }}个</template>
             </el-table-column>
+            <el-table-column label="总任务数" width="100" align="center">
+              <template #default="{ row }">{{ subTaskStats(row.id).unitCount }}</template>
+            </el-table-column>
+            <el-table-column label="抽查任务数" width="110" align="center">
+              <template #default="{ row }">{{ subTaskStats(row.id).spotCheckCount }}</template>
+            </el-table-column>
+            <el-table-column label="核查任务数" width="110" align="center">
+              <template #default="{ row }">{{ subTaskStats(row.id).importedCheckCount }}</template>
+            </el-table-column>
             <el-table-column prop="responsibleUserNames" label="责任人" min-width="180" show-overflow-tooltip />
+            <el-table-column prop="cityAdminNames" label="市级管理员" min-width="150" show-overflow-tooltip />
+            <el-table-column prop="countyAdminNames" label="县级管理员" min-width="150" show-overflow-tooltip />
             <el-table-column label="状态" width="100" align="center">
               <template #default="{ row }"><StatusTag :value="row.status" :options="CENSUS_TASK_STATUS_OPTIONS" /></template>
             </el-table-column>
@@ -49,7 +61,8 @@
             <el-table-column label="操作" width="180" align="center">
               <template #default="{ row }">
                 <el-button link type="primary" size="small" @click="router.push(`/census/${row.id}`)">查看</el-button>
-                <el-button link type="success" size="small" @click="store.startTask(row.id); refresh()" v-if="row.status === 'published'">启动</el-button>
+                <el-button link type="primary" size="small" @click="openTaskUnits(row)">单位详情</el-button>
+                <el-button link type="success" size="small" @click="store.startTask(row.id); refresh()" v-if="row.status === 'published' && authStore.hasPermission('census:update')">启动</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -59,6 +72,22 @@
       <template v-else>
         <el-card header="分配与进度" shadow="never">
           <ProgressOverview :assignments="store.assignments" />
+        </el-card>
+
+        <el-card header="任务单位名单" shadow="never" style="margin-top: 16px;">
+          <el-table :data="taskUnits" border stripe size="small">
+            <el-table-column prop="name" label="单位名称" min-width="180" show-overflow-tooltip />
+            <el-table-column label="市州" width="120" align="center">
+              <template #default="{ row }">{{ areaStore.getAreaName(row.cityCode) || '-' }}</template>
+            </el-table-column>
+            <el-table-column label="区县" width="120" align="center">
+              <template #default="{ row }">{{ areaStore.getAreaName(row.countyCode) || '-' }}</template>
+            </el-table-column>
+            <el-table-column prop="detailAddress" label="地址" min-width="240" show-overflow-tooltip />
+            <el-table-column label="核查类型" width="130" align="center">
+              <template #default="{ row }">{{ getOptionLabel('checkType', row.checkType) || '-' }}</template>
+            </el-table-column>
+          </el-table>
         </el-card>
 
         <el-card header="采集记录" shadow="never" style="margin-top: 16px;">
@@ -120,16 +149,48 @@
         <el-form-item label="分配区域" prop="assignedAreaCodes">
           <AreaAssignTree v-model="subTaskForm.assignedAreaCodes" />
         </el-form-item>
-        <el-form-item label="责任人" prop="responsibleUserIds">
+        <el-form-item label="普查人员" prop="responsibleUserIds">
           <el-select
             v-model="subTaskForm.responsibleUserIds"
             multiple
             filterable
-            placeholder="输入姓名、用户名或手机号搜索"
+            placeholder="输入姓名、用户名或手机号搜索普查人员"
             style="width: 100%"
           >
             <el-option
-              v-for="user in responsibleUsers"
+              v-for="user in enumeratorUsers"
+              :key="user.id"
+              :label="`${user.realName}（${user.username} · ${user.areaName}）`"
+              :value="user.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="市级管理员" prop="cityAdminIds">
+          <el-select
+            v-model="subTaskForm.cityAdminIds"
+            multiple
+            filterable
+            placeholder="指定市级管理员"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="user in cityAdminUsers"
+              :key="user.id"
+              :label="`${user.realName}（${user.username} · ${user.areaName}）`"
+              :value="user.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="县级管理员" prop="countyAdminIds">
+          <el-select
+            v-model="subTaskForm.countyAdminIds"
+            multiple
+            filterable
+            placeholder="指定县级管理员"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="user in countyAdminUsers"
               :key="user.id"
               :label="`${user.realName}（${user.username} · ${user.areaName}）`"
               :value="user.id"
@@ -161,11 +222,28 @@
           <h3>{{ group.module.key }} {{ group.module.title }}</h3>
           <el-descriptions :column="1" border>
             <el-descriptions-item v-for="item in group.items" :key="item.key" :label="item.field.label">
-              {{ formatFieldValue(item.key, item.field, item.value) || '-' }}
+              <img v-if="item.field.type === 'signature' && item.value" class="signature-image" :src="item.value" alt="住宿单位负责人签字" />
+              <span v-else>{{ formatFieldValue(item.key, item.field, item.value) || '-' }}</span>
             </el-descriptions-item>
           </el-descriptions>
         </div>
       </div>
+    </el-drawer>
+
+    <el-drawer v-model="unitDrawerVisible" title="任务单位详情" size="760px">
+      <el-table :data="unitDrawerRows" border stripe>
+        <el-table-column prop="name" label="单位名称" min-width="180" show-overflow-tooltip />
+        <el-table-column label="市州" width="120" align="center">
+          <template #default="{ row }">{{ areaStore.getAreaName(row.cityCode) || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="区县" width="120" align="center">
+          <template #default="{ row }">{{ areaStore.getAreaName(row.countyCode) || '-' }}</template>
+        </el-table-column>
+        <el-table-column prop="detailAddress" label="地址" min-width="240" show-overflow-tooltip />
+        <el-table-column label="核查类型" width="130" align="center">
+          <template #default="{ row }">{{ getOptionLabel('checkType', row.checkType) || '-' }}</template>
+        </el-table-column>
+      </el-table>
     </el-drawer>
   </div>
 </template>
@@ -178,8 +256,9 @@ import { useAuthStore } from '@/stores/auth'
 import { useAreaStore } from '@/stores/area'
 import { CENSUS_RECORD_STATUS_OPTIONS, CENSUS_TASK_STATUS_OPTIONS } from '@/utils/constants'
 import { formatDate, formatDateTime } from '@/utils/formatters'
-import { COLLECTION_FIELD_MAP, COLLECTION_MODULES, extractAccommodationPatch, getOptionLabel, getVisibleModuleFields, shouldSkipBusinessModule } from '@/utils/collectionSpec'
+import { COLLECTION_FIELD_MAP, COLLECTION_MODULES, getOptionLabel, getVisibleModuleFields, shouldSkipBusinessModule } from '@/utils/collectionSpec'
 import { buildReviewPatch, canReviewRecord, getReviewStepForRole, submitForCountyReviewPatch } from '@/utils/reviewFlow'
+import { archiveCensusRecord, publishRecordToAccommodation } from '@/utils/accommodationWorkflow'
 import db from '@/db'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import StatusTag from '@/components/common/StatusTag.vue'
@@ -194,10 +273,15 @@ const areaStore = useAreaStore()
 const records = ref([])
 const activeRecord = ref(null)
 const recordDrawerVisible = ref(false)
+const unitDrawerVisible = ref(false)
+const unitDrawerRows = ref([])
+const taskUnits = ref([])
 const subTaskDialogVisible = ref(false)
 const submittingSubTask = ref(false)
 const subTaskFormRef = ref(null)
-const responsibleUsers = ref([])
+const enumeratorUsers = ref([])
+const cityAdminUsers = ref([])
+const countyAdminUsers = ref([])
 
 const subTaskForm = reactive({
   title: '',
@@ -205,13 +289,17 @@ const subTaskForm = reactive({
   description: '',
   assignedAreaCodes: [],
   responsibleUserIds: [],
+  cityAdminIds: [],
+  countyAdminIds: [],
 })
 
 const subTaskRules = {
   title: [{ required: true, message: '请输入子任务名称', trigger: 'blur' }],
   deadline: [{ required: true, message: '请选择截止日期', trigger: 'change' }],
   assignedAreaCodes: [{ required: true, type: 'array', min: 1, message: '请选择分配区域', trigger: 'change' }],
-  responsibleUserIds: [{ required: true, type: 'array', min: 1, message: '请选择责任人', trigger: 'change' }],
+  responsibleUserIds: [{ required: true, type: 'array', min: 1, message: '请选择普查人员', trigger: 'change' }],
+  cityAdminIds: [{ required: true, type: 'array', min: 1, message: '请选择市级管理员', trigger: 'change' }],
+  countyAdminIds: [{ required: true, type: 'array', min: 1, message: '请选择县级管理员', trigger: 'change' }],
 }
 
 const isMainTask = computed(() => (store.currentTask?.taskType || 'main') === 'main')
@@ -238,11 +326,17 @@ async function refresh() {
   await areaStore.fetchAreas()
   await store.fetchTaskDetail(route.params.id)
   await loadUsers()
-  if (!isMainTask.value) await loadRecords()
+  if (!isMainTask.value) {
+    await loadRecords()
+    await loadTaskUnits()
+  }
 }
 
 async function loadUsers() {
-  responsibleUsers.value = (await db.users.toArray()).filter(user => ['enumerator', 'county_admin', 'city_admin'].includes(user.role) && user.status === 'active')
+  const activeUsers = (await db.users.toArray()).filter(user => user.status === 'active')
+  enumeratorUsers.value = activeUsers.filter(user => user.role === 'enumerator')
+  cityAdminUsers.value = activeUsers.filter(user => user.role === 'city_admin')
+  countyAdminUsers.value = activeUsers.filter(user => user.role === 'county_admin')
 }
 
 function openSubTaskDialog() {
@@ -251,6 +345,8 @@ function openSubTaskDialog() {
   subTaskForm.description = ''
   subTaskForm.assignedAreaCodes = []
   subTaskForm.responsibleUserIds = []
+  subTaskForm.cityAdminIds = []
+  subTaskForm.countyAdminIds = []
   subTaskDialogVisible.value = true
 }
 
@@ -259,7 +355,9 @@ async function createSubTask() {
   if (!valid) return
   submittingSubTask.value = true
   try {
-    const selectedUsers = responsibleUsers.value.filter(user => subTaskForm.responsibleUserIds.includes(user.id))
+    const selectedUsers = enumeratorUsers.value.filter(user => subTaskForm.responsibleUserIds.includes(user.id))
+    const selectedCityAdmins = cityAdminUsers.value.filter(user => subTaskForm.cityAdminIds.includes(user.id))
+    const selectedCountyAdmins = countyAdminUsers.value.filter(user => subTaskForm.countyAdminIds.includes(user.id))
     await store.createSubTask(store.currentTask.id, {
       title: subTaskForm.title,
       description: subTaskForm.description,
@@ -267,6 +365,10 @@ async function createSubTask() {
       assignedAreaCodes: JSON.stringify(subTaskForm.assignedAreaCodes),
       responsibleUserIds: JSON.stringify(subTaskForm.responsibleUserIds),
       responsibleUserNames: selectedUsers.map(user => user.realName).join('、'),
+      cityAdminIds: JSON.stringify(subTaskForm.cityAdminIds),
+      cityAdminNames: selectedCityAdmins.map(user => user.realName).join('、'),
+      countyAdminIds: JSON.stringify(subTaskForm.countyAdminIds),
+      countyAdminNames: selectedCountyAdmins.map(user => user.realName).join('、'),
     })
     ElMessage.success('子任务已创建')
     subTaskDialogVisible.value = false
@@ -289,6 +391,42 @@ async function loadRecords() {
   records.value.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt))
 }
 
+async function loadTaskUnits() {
+  const ids = new Set()
+  store.assignments.forEach(assignment => {
+    parseArray(assignment.targetAccommodationIds).forEach(id => ids.add(Number(id)))
+  })
+  const units = []
+  for (const id of ids) {
+    const unit = await db.accommodations.get(id)
+    if (unit) units.push(unit)
+  }
+  taskUnits.value = units
+}
+
+function subTaskStats(taskId) {
+  const list = store.assignments.filter(item => item.taskId === taskId)
+  return list.reduce((acc, item) => {
+    acc.unitCount += Number(item.unitCount || 0)
+    acc.spotCheckCount += Number(item.spotCheckCount || 0)
+    acc.importedCheckCount += Number(item.importedCheckCount || 0)
+    return acc
+  }, { unitCount: 0, spotCheckCount: 0, importedCheckCount: 0 })
+}
+
+async function openTaskUnits(task) {
+  const assignments = await db.censusAssignments.where('taskId').equals(Number(task.id)).toArray()
+  const ids = new Set()
+  assignments.forEach(assignment => parseArray(assignment.targetAccommodationIds).forEach(id => ids.add(Number(id))))
+  const units = []
+  for (const id of ids) {
+    const unit = await db.accommodations.get(id)
+    if (unit) units.push(unit)
+  }
+  unitDrawerRows.value = units
+  unitDrawerVisible.value = true
+}
+
 function openRecord(row) {
   activeRecord.value = row
   recordDrawerVisible.value = true
@@ -308,8 +446,8 @@ async function submitRecordForReview(row) {
 async function deleteRecord(row) {
   try {
     await ElMessageBox.confirm(`确定删除「${row.unitName || '未命名单位'}」的采集记录吗？`, '删除确认', { type: 'warning' })
-    await db.censusRecords.delete(row.id)
-    ElMessage.success('已删除')
+    await archiveCensusRecord(row.id, '任务采集记录删除')
+    ElMessage.success('已删除，可在删除管理中恢复')
     await loadRecords()
   } catch { /* cancel */ }
 }
@@ -337,27 +475,6 @@ async function reviewRecord(row, action) {
     ElMessage.success(action === 'approve' ? (patch.status === 'available' ? '省级审核通过，记录已可用' : '已提交下一级审核') : '已驳回')
   } catch (error) {
     ElMessage.error(error.message || '审核失败')
-  }
-}
-
-async function publishRecordToAccommodation(row) {
-  let formData = {}
-  try { formData = JSON.parse(row.formData || '{}') } catch { formData = {} }
-  const patch = extractAccommodationPatch(formData)
-  if (row.accommodationId) {
-    await db.accommodations.update(row.accommodationId, patch)
-    return
-  }
-  if (!patch.creditCode) return
-  const existing = await db.accommodations.where('creditCode').equals(patch.creditCode).first()
-  if (existing) {
-    await db.accommodations.update(existing.id, patch)
-    await db.censusRecords.update(row.id, { accommodationId: existing.id })
-    row.accommodationId = existing.id
-  } else {
-    const id = await db.accommodations.add({ ...patch, creditCode: patch.creditCode, createdAt: new Date().toISOString() })
-    await db.censusRecords.update(row.id, { accommodationId: id })
-    row.accommodationId = id
   }
 }
 
@@ -430,5 +547,16 @@ function exportRecords() {
   margin: 0 0 10px;
   font-size: 15px;
   color: #1f2937;
+}
+
+.signature-image {
+  display: block;
+  max-width: 360px;
+  width: 100%;
+  max-height: 120px;
+  object-fit: contain;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fff;
 }
 </style>

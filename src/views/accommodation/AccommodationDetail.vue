@@ -24,14 +24,11 @@
             :label="fieldLabel(key)"
             :span="fieldSpan(key)"
           >
-            {{ formatValue(key) || '-' }}
+            <img v-if="isSignatureField(key) && form[key]" class="signature-image" :src="form[key]" alt="住宿单位负责人签字" />
+            <span v-else>{{ formatValue(key) || '-' }}</span>
           </el-descriptions-item>
         </el-descriptions>
       </el-card>
-
-      <div style="margin-top: 20px; text-align: right;" v-if="authStore.hasPermission('accommodation:update')">
-        <el-button type="primary" @click="router.push(`/accommodation/${detail.id}/edit`)">编辑</el-button>
-      </div>
     </div>
   </div>
 </template>
@@ -40,7 +37,6 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAccommodationStore } from '@/stores/accommodation'
-import { useAuthStore } from '@/stores/auth'
 import { useAreaStore } from '@/stores/area'
 import CategoryTag from '@/components/common/CategoryTag.vue'
 import {
@@ -55,7 +51,6 @@ import {
 const route = useRoute()
 const router = useRouter()
 const store = useAccommodationStore()
-const authStore = useAuthStore()
 const areaStore = useAreaStore()
 
 const detail = ref(null)
@@ -83,7 +78,11 @@ function fieldLabel(key) {
 
 function fieldSpan(key) {
   const type = COLLECTION_FIELD_MAP[key]?.type
-  return ['textarea', 'photo', 'photos', 'signature', 'location', 'checkbox'].includes(type) ? 2 : 1
+  return ['textarea', 'photo', 'photos', 'signature', 'location', 'checkbox', 'divisionAddress'].includes(type) ? 2 : 1
+}
+
+function isSignatureField(key) {
+  return COLLECTION_FIELD_MAP[key]?.type === 'signature'
 }
 
 function formatValue(key) {
@@ -111,5 +110,16 @@ function formatValue(key) {
 <style scoped>
 .module-card {
   margin-bottom: 16px;
+}
+
+.signature-image {
+  display: block;
+  max-width: 360px;
+  width: 100%;
+  max-height: 120px;
+  object-fit: contain;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fff;
 }
 </style>

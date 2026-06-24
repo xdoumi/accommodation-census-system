@@ -118,11 +118,13 @@ import {
   createEmptyCollectionForm,
   extractAccommodationPatch,
   getVisibleModuleFields,
+  inferStarIndustryFlag,
   shouldSkipBusinessModule,
 } from '@/utils/collectionSpec'
 import StatusTag from '@/components/common/StatusTag.vue'
 import { buildReviewPatch, canReviewRecord, getReviewStepForRole, INITIAL_REVIEW_STATUS } from '@/utils/reviewFlow'
 import { useAuthStore } from '@/stores/auth'
+import { publishRecordToAccommodation } from '@/utils/accommodationWorkflow'
 
 const route = useRoute()
 const router = useRouter()
@@ -163,11 +165,26 @@ onMounted(async () => {
 async function handleAssignmentChange(assignmentId) {
   const assignment = censusStore.assignments.find(a => a.id === assignmentId)
   if (!assignment) return
-  accommodations.value = await db.accommodations.where('countyCode').equals(assignment.areaCode).toArray()
+  const targetIds = parseArray(assignment.targetAccommodationIds).map(Number).filter(Boolean)
+  if (targetIds.length) {
+    const targetUnits = []
+    for (const id of targetIds) {
+      const unit = await db.accommodations.get(id)
+      if (unit && !unit.deletedAt) targetUnits.push(unit)
+    }
+    accommodations.value = targetUnits
+    await loadRecords()
+    return
+  }
+  accommodations.value = (await db.accommodations.where('countyCode').equals(assignment.areaCode).toArray()).filter(item => !item.deletedAt)
   if (accommodations.value.length === 0) {
-    accommodations.value = await db.accommodations.where('cityCode').equals(assignment.areaCode).toArray()
+    accommodations.value = (await db.accommodations.where('cityCode').equals(assignment.areaCode).toArray()).filter(item => !item.deletedAt)
   }
   await loadRecords()
+}
+
+function parseArray(raw) {
+  try { return Array.isArray(raw) ? raw : JSON.parse(raw || '[]') } catch { return [] }
 }
 
 async function loadRecords() {
@@ -224,6 +241,8 @@ async function saveFill(status) {
     checkType: fillForm.checkType,
     catalogSource: fillForm.catalogSource,
     licenseType: fillForm.licenseType,
+    managerSignature: fillForm.managerSignature,
+    managerSignatureAt: fillForm.managerSignatureAt,
     location: fillForm.location ? JSON.stringify(fillForm.location) : '',
     reviewLevel: status === 'submitted' ? 'county' : undefined,
     reviewAction: status === 'submitted' ? 'submit' : undefined,
@@ -261,11 +280,7 @@ async function reviewRecord(record, action) {
     const patch = buildReviewPatch(record, authStore.userRole, action, authStore.currentUser?.id)
     await db.censusRecords.update(record.id, patch)
     Object.assign(record, patch)
-    if (patch.status === 'available' && record.accommodationId) {
-      let formData = {}
-      try { formData = JSON.parse(record.formData || '{}') } catch { formData = {} }
-      await db.accommodations.update(record.accommodationId, extractAccommodationPatch(formData))
-    }
+    if (patch.status === 'available') await publishRecordToAccommodation(record)
     ElMessage.success(patch.status === 'available' ? '省级审核通过，记录已可用' : '已提交下一级审核')
   } catch (error) {
     ElMessage.error(error.message || '审核失败')
@@ -274,6 +289,7 @@ async function reviewRecord(record, action) {
 
 function syncIndustryCode(value) {
   fillForm.economyIndustryCode = value
+  fillForm.isStarIndustryCode = inferStarIndustryFlag(value)
 }
 
 function handleOtaChange(value) {
@@ -392,6 +408,11 @@ const AssetPlaceholder = defineComponent({
   setup(props) {
     return () => {
       if (props.field.type === 'photos') return h('span', null, Array.isArray(props.modelValue) ? `已上传 ${props.modelValue.length} 张` : '未上传')
+      if (props.field.type === 'signature') {
+        return props.modelValue
+          ? h('img', { class: 'signature-image', src: props.modelValue, alt: '住宿单位负责人签字' })
+          : h('span', null, '未签字')
+      }
       return h('span', null, props.modelValue ? '已上传' : 'PC 端暂不上传，请使用移动端采集')
     }
   },
@@ -401,5 +422,16 @@ const AssetPlaceholder = defineComponent({
 <style scoped>
 .pc-entry-form :deep(.el-form-item) {
   margin-bottom: 18px;
+}
+
+.signature-image {
+  display: block;
+  max-width: 360px;
+  width: 100%;
+  max-height: 120px;
+  object-fit: contain;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fff;
 }
 </style>

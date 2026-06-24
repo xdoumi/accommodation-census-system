@@ -87,6 +87,7 @@ import { formatDate, formatDateTime } from '@/utils/formatters'
 import StatusTag from '@/components/common/StatusTag.vue'
 import db from '@/db'
 import { submitForCountyReviewPatch } from '@/utils/reviewFlow'
+import { archiveCensusRecord } from '@/utils/accommodationWorkflow'
 
 const route = useRoute()
 const router = useRouter()
@@ -143,8 +144,8 @@ function canEditRecord(record) {
 async function deleteRecord(record) {
   try {
     await ElMessageBox.confirm(`确定删除「${record.unitName || '未命名单位'}」的填报记录吗？`, '删除确认', { type: 'warning' })
-    await db.censusRecords.delete(record.id)
-    ElMessage.success('已删除')
+    await archiveCensusRecord(record.id, '移动端任务详情删除')
+    ElMessage.success('已删除，可在PC端删除管理中恢复')
     await loadRecords()
   } catch { /* cancel */ }
 }

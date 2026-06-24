@@ -46,7 +46,7 @@ import { useUserStore } from '@/stores/user'
 import { useAuthStore } from '@/stores/auth'
 import { useAreaStore } from '@/stores/area'
 import { ElMessage } from 'element-plus'
-import { ROLE_OPTIONS } from '@/utils/constants'
+import { loadRoleOptions } from '@/utils/constants'
 import { validateUsername, validatePhone, validatePassword } from '@/utils/validators'
 import AreaCascader from '@/components/common/AreaCascader.vue'
 import db from '@/db'
@@ -64,9 +64,10 @@ const submitting = ref(false)
 // 可创建的角色（根据当前用户角色限制）
 const availableRoles = computed(() => {
   const role = authStore.userRole
-  if (role === 'super_admin') return ROLE_OPTIONS
-  if (role === 'provincial_admin') return ROLE_OPTIONS.filter(r => !['super_admin'].includes(r.value))
-  if (role === 'city_admin') return ROLE_OPTIONS.filter(r => ['county_admin', 'enumerator', 'reviewer'].includes(r.value))
+  const roleOptions = loadRoleOptions()
+  if (role === 'super_admin') return roleOptions
+  if (role === 'provincial_admin') return roleOptions.filter(r => !['super_admin'].includes(r.value))
+  if (role === 'city_admin') return roleOptions.filter(r => ['county_admin', 'enumerator'].includes(r.value))
   return []
 })
 

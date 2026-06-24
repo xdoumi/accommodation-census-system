@@ -15,6 +15,11 @@
             </el-form-item>
           </el-col>
           <el-col :span="12">
+            <el-form-item label="开始日期" prop="startDate">
+              <el-date-picker v-model="form.startDate" type="date" value-format="YYYY-MM-DD" placeholder="选择开始日期" style="width: 100%" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
             <el-form-item label="截止日期" prop="deadline">
               <el-date-picker v-model="form.deadline" type="date" value-format="YYYY-MM-DD" placeholder="选择截止日期" style="width: 100%" />
             </el-form-item>
@@ -65,6 +70,7 @@ const submitting = ref(false)
 const form = reactive({
   title: '',
   description: '',
+  startDate: '',
   deadline: '',
   scopeType: 'province',
   scopeAreaCodes: [],
@@ -89,6 +95,7 @@ onMounted(async () => {
     if (task) {
       form.title = task.title
       form.description = task.description
+      form.startDate = task.startDate?.split('T')[0] || task.startDate || ''
       form.deadline = task.deadline?.split('T')[0] || task.deadline
       form.scopeType = task.scopeType || 'province'
       try { form.scopeAreaCodes = JSON.parse(task.scopeAreaCodes || task.assignedAreaCodes || '[]') } catch {}
@@ -107,6 +114,7 @@ async function handleSubmit() {
       taskType: 'main',
       title: form.title,
       description: form.description,
+      startDate: form.startDate,
       deadline: form.deadline,
       scopeType: form.scopeType,
       scopeAreaCodes: JSON.stringify(scopeAreaCodes),

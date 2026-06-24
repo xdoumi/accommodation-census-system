@@ -6,12 +6,6 @@
       <div class="page-header">
         <span class="page-title">住宿单位列表</span>
         <div>
-          <el-button type="primary" @click="handleCreate" v-if="authStore.hasPermission('accommodation:create')">
-            <el-icon><Plus /></el-icon>新增
-          </el-button>
-          <el-button @click="handleImport" v-if="authStore.hasPermission('accommodation:import')">
-            <el-icon><Upload /></el-icon>导入
-          </el-button>
           <el-button @click="handleExport" v-if="authStore.hasPermission('accommodation:export')">
             <el-icon><Download /></el-icon>导出
           </el-button>
@@ -20,6 +14,12 @@
 
       <DataTable :data="displayRows" :loading="store.loading" :pagination="displayPagination" @page-change="handlePageChange">
         <el-table-column prop="displayName" label="单位名称" min-width="180" show-overflow-tooltip />
+        <el-table-column label="市州" width="120" align="center">
+          <template #default="{ row }">{{ areaStore.getAreaName(row.cityCode) || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="区县" width="120" align="center">
+          <template #default="{ row }">{{ areaStore.getAreaName(row.countyCode) || '-' }}</template>
+        </el-table-column>
         <el-table-column label="当前经营状态" width="120" align="center">
           <template #default="{ row }">{{ actualStatusText(row) || '-' }}</template>
         </el-table-column>
@@ -38,14 +38,7 @@
         </el-table-column>
         <el-table-column label="操作" width="180" align="center" fixed="right">
           <template #default="{ row }">
-            <el-button v-if="row._isRecordOnly" link type="primary" size="small" @click="handleViewRecord(row)">查看填报</el-button>
-            <el-button v-else link type="primary" size="small" @click="handleView(row)">查看</el-button>
-            <el-button v-if="!row._isRecordOnly && authStore.hasPermission('accommodation:update')" link type="primary" size="small" @click="handleEdit(row)">编辑</el-button>
-            <el-popconfirm title="确定删除该单位吗？" @confirm="handleDelete(row)" v-if="!row._isRecordOnly && authStore.hasPermission('accommodation:delete')">
-              <template #reference>
-                <el-button link type="danger" size="small">删除</el-button>
-              </template>
-            </el-popconfirm>
+            <el-button link type="primary" size="small" @click="handleView(row)">查看</el-button>
           </template>
         </el-table-column>
       </DataTable>
@@ -61,10 +54,11 @@ import { useAuthStore } from '@/stores/auth'
 import { useAreaStore } from '@/stores/area'
 import { useCensusStore } from '@/stores/census'
 import { ElMessage } from 'element-plus'
-import { exportToExcel, ACCOMMODATION_EXPORT_COLUMNS } from '@/utils/excel'
+import { exportToExcel } from '@/utils/excel'
 import { CATEGORY_OPTIONS, CENSUS_RECORD_STATUS_OPTIONS, OPERATING_STATUS_OPTIONS } from '@/utils/constants'
 import { getOptionLabel } from '@/utils/collectionSpec'
 import { inUserScope } from '@/utils/dataScope'
+import { getFullCollectionExportColumns } from '@/utils/accommodationWorkflow'
 import db from '@/db'
 import SearchFilterBar from '@/components/common/SearchFilterBar.vue'
 import DataTable from '@/components/common/DataTable.vue'
@@ -78,10 +72,9 @@ const censusStore = useCensusStore()
 const allAccommodations = ref([])
 const latestRecordsByAccommodation = ref(new Map())
 const latestRecordsByCreditCode = ref(new Map())
-const latestRecordOnlyRows = ref([])
 
 const accommodationRows = computed(() => allAccommodations.value.map(row => buildAccommodationDisplayRow(row)))
-const allDisplayRows = computed(() => [...accommodationRows.value, ...latestRecordOnlyRows.value])
+const allDisplayRows = computed(() => accommodationRows.value)
 const displayRows = computed(() => {
   const start = (store.pagination.page - 1) * store.pagination.pageSize
   return allDisplayRows.value.slice(start, start + store.pagination.pageSize)
@@ -120,36 +113,19 @@ function handlePageChange({ page, pageSize }) {
   refreshList()
 }
 
-function handleCreate() {
-  router.push('/accommodation/create')
-}
-
 function handleView(row) {
   router.push(`/accommodation/${row.id}`)
 }
 
-function handleEdit(row) {
-  router.push(`/accommodation/${row.id}/edit`)
-}
-
-function handleViewRecord(row) {
-  const record = row._latestRecord
-  if (!record?.taskId) return
-  router.push(`/census/${record.taskId}/entry?assignmentId=${record.assignmentId || ''}&recordId=${record.id}`)
-}
-
-async function handleDelete(row) {
-  await store.remove(row.id)
-  ElMessage.success('删除成功')
-  refreshList()
-}
-
-function handleImport() {
-  router.push('/accommodation-import')
-}
-
 async function handleExport() {
-  exportToExcel(allDisplayRows.value, ACCOMMODATION_EXPORT_COLUMNS, '住宿单位数据')
+  const rows = allDisplayRows.value.map(row => ({
+    ...row,
+    displayStatus: actualStatusText(row) || '-',
+    displaySource: sourceText(row),
+    displayCheckType: checkTypeText(row) || '-',
+    displayReviewStatus: row._latestRecord ? getRecordStatusText(row._latestRecord.status) : '已入库',
+  }))
+  exportToExcel(rows, getFullCollectionExportColumns(code => areaStore.getAreaName(code)), '住宿单位完整数据')
   ElMessage.success('导出成功')
 }
 
@@ -164,6 +140,7 @@ async function loadAccommodations() {
     const filters = store.filters
     let list = await db.accommodations.filter(item => {
       if (!inUserScope(item, authStore.userRole, authStore.userAreaCode)) return false
+      if (item.deletedAt) return false
       if (filters.keyword) {
         const kw = filters.keyword.toLowerCase()
         const hit = [
@@ -204,7 +181,6 @@ async function loadLatestRecords() {
   })
   latestRecordsByAccommodation.value = byAccommodation
   latestRecordsByCreditCode.value = byCreditCode
-  latestRecordOnlyRows.value = await buildRecordOnlyRows(records)
 }
 
 function latestRecordFor(row) {
@@ -221,72 +197,6 @@ function buildAccommodationDisplayRow(row) {
     displayName: formData.operatingName || formData.registeredName || formData.unitName || row.name,
     displayAddress: formData.actualAddress || formData.registeredAddress || row.actualAddress || row.detailAddress || '-',
   }
-}
-
-async function buildRecordOnlyRows(records) {
-  const accommodationIds = new Set(allAccommodations.value.map(item => item.id))
-  const creditCodes = new Set(allAccommodations.value.map(item => item.creditCode).filter(Boolean))
-  const taskTitleById = new Map(censusStore.tasks.map(task => [task.id, task.title]))
-  const assignments = await db.censusAssignments.toArray()
-  const assignmentById = new Map(assignments.map(item => [item.id, item]))
-  const rows = []
-  for (const record of records) {
-    if (record.accommodationId && accommodationIds.has(record.accommodationId)) continue
-    if (record.creditCode && creditCodes.has(record.creditCode)) continue
-    if (!recordInUserScope(record, assignmentById.get(record.assignmentId))) continue
-    const formData = parseFormData(record)
-    if (!matchesRecordFilters(record, formData)) continue
-    rows.push({
-      id: `record-${record.id}`,
-      _isRecordOnly: true,
-      _latestRecord: record,
-      _formData: formData,
-      displayName: record.unitName || formData.operatingName || formData.registeredName || formData.unitName || '未命名单位',
-      displayAddress: formData.actualAddress || formData.registeredAddress || formData.locationAddress || '-',
-      actualOperatingStatus: formData.actualOperatingStatus || '',
-      operatingStatus: formData.actualOperatingStatus || '',
-      checkType: record.checkType || formData.checkType || '',
-      catalogSource: record.catalogSource || formData.catalogSource || '',
-      taskTitle: taskTitleById.get(record.taskId) || '',
-      updatedAt: record.updatedAt,
-      createdAt: record.createdAt,
-    })
-  }
-  return rows
-}
-
-function recordInUserScope(record, assignment) {
-  const role = authStore.userRole
-  if (['super_admin', 'provincial_admin'].includes(role)) return true
-  if (role === 'enumerator') return record.filledBy === authStore.currentUser?.id || assignment?.assignedTo === authStore.currentUser?.id
-  const areaCode = assignment?.areaCode || ''
-  if (role === 'county_admin') return areaCode === authStore.userAreaCode
-  if (role === 'city_admin') return areaCode.startsWith(authStore.userAreaCode.substring(0, 4))
-  if (role === 'reviewer') {
-    if (authStore.userAreaCode === '520000') return true
-    return areaCode.startsWith(authStore.userAreaCode.substring(0, 4))
-  }
-  return false
-}
-
-function matchesRecordFilters(record, formData) {
-  const filters = store.filters
-  if (filters.keyword) {
-    const kw = filters.keyword.toLowerCase()
-    const hit = [
-      record.unitName,
-      record.creditCode,
-      formData.operatingName,
-      formData.registeredName,
-      formData.unitName,
-      formData.actualAddress,
-      formData.registeredAddress,
-      formData.locationAddress,
-    ].some(value => String(value || '').toLowerCase().includes(kw))
-    if (!hit) return false
-  }
-  if (filters.operatingStatus && formData.actualOperatingStatus !== filters.operatingStatus) return false
-  return true
 }
 
 function parseFormData(record) {
@@ -312,5 +222,9 @@ function sourceText(row) {
 function checkTypeText(row) {
   const value = row._formData.checkType || row._latestRecord?.checkType || row.checkType
   return getOptionLabel('checkType', value)
+}
+
+function getRecordStatusText(status) {
+  return CENSUS_RECORD_STATUS_OPTIONS.find(item => item.value === status)?.label || status || '-'
 }
 </script>

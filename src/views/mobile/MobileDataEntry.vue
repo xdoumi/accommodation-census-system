@@ -49,11 +49,9 @@
       </button>
       <button
         type="button"
-        class="module-anchor"
-        :class="{ active: activeModuleKey === 'PREVIEW' }"
-        aria-label="跳转到提交预览"
-        :aria-current="activeModuleKey === 'PREVIEW' ? 'true' : 'false'"
-        @click="scrollToModule('PREVIEW')"
+        class="module-anchor preview-link"
+        aria-label="进入提交预览"
+        @click="handleSubmit"
       >
         预览
       </button>
@@ -81,15 +79,26 @@
       </div>
 
       <template v-if="module.key === 'A'">
-        <div class="action-panel">
+        <div class="action-panel" data-field-key="location" :class="{ 'has-error': errors.location }">
           <div>
             <div class="panel-title"><span class="required">*</span>A1 定位坐标</div>
-            <div class="panel-desc">{{ locationText }}</div>
+            <div class="location-grid" v-if="form.location">
+              <div>
+                <span>当前位置地址</span>
+                <strong>{{ form.locationAddress || currentAddressDescription() }}</strong>
+              </div>
+              <div>
+                <span>经纬度</span>
+                <strong>{{ coordinateText }}</strong>
+              </div>
+            </div>
+            <div v-else class="panel-desc">{{ locationText }}</div>
           </div>
           <el-button type="primary" size="small" :loading="locating" :disabled="readOnly" @click="captureLocation">定位</el-button>
         </div>
+        <div v-if="errors.location" class="m-error location-error">{{ errors.location }}</div>
 
-        <div class="m-form-group">
+        <div class="m-form-group" data-field-key="unitName">
           <div class="m-form-label"><span class="required">*</span>A2 单位名称</div>
           <input v-model.trim="form.unitName" class="m-input" :class="{ 'has-error': errors.unitName }" :disabled="readOnly" placeholder="输入关键词可匹配导入名录" />
           <div class="inline-actions">
@@ -106,6 +115,7 @@
 
       <template v-else-if="module.key === 'B'">
         <PhotoPicker
+          field-key="businessLicensePhoto"
           label="B1 营业执照或同等效力照片"
           :required="true"
           :value="form.businessLicensePhoto"
@@ -123,7 +133,20 @@
         <FieldControl field-key="registrationDate" :form="form" :errors="errors" :disabled="readOnly" />
         <FieldControl field-key="registeredStatus" :form="form" :errors="errors" :disabled="readOnly" />
         <FieldControl field-key="registeredAddress" :form="form" :errors="errors" :disabled="readOnly" />
-        <FieldControl field-key="registeredDivisionCode" :form="form" :errors="errors" :disabled="readOnly" />
+        <DivisionCodePicker
+          address-field-key="registeredAddress"
+          address-label="区划地址"
+          address-code="B8"
+          code-field-key="registeredDivisionCode"
+          code-label="区划代码（12位）"
+          code-code="B9"
+          prefix="registeredDivision"
+          infer-button-label="按注册地址识别"
+          :form="form"
+          :errors="errors"
+          :disabled="readOnly"
+          :areas="areaStore.areas"
+        />
         <FieldControl field-key="legalRepresentative" :form="form" :errors="errors" :disabled="readOnly" />
         <FieldControl field-key="legalRepresentativePhone" :form="form" :errors="errors" :disabled="readOnly" />
       </template>
@@ -136,10 +159,25 @@
         <FieldControl field-key="operatingName" :form="form" :errors="errors" :disabled="readOnly" />
         <FieldControl field-key="actualOperatingStatus" :form="form" :errors="errors" :disabled="readOnly" />
         <FieldControl field-key="actualAddress" :form="form" :errors="errors" :disabled="readOnly" />
-        <FieldControl field-key="divisionCode" :form="form" :errors="errors" :disabled="readOnly" />
+        <DivisionCodePicker
+          address-field-key="actualAddress"
+          address-label="实际经营区划地址"
+          address-code="C4"
+          code-field-key="divisionCode"
+          code-label="实际经营区划代码（12位）"
+          code-code="C5"
+          prefix="division"
+          infer-button-label="按实际经营地址识别"
+          :form="form"
+          :errors="errors"
+          :disabled="readOnly"
+          :areas="areaStore.areas"
+        />
         <FieldControl field-key="contactName" :form="form" :errors="errors" :disabled="readOnly" />
         <FieldControl field-key="contactPhone" :form="form" :errors="errors" :disabled="readOnly" />
         <FieldControl field-key="economyIndustryCode" :form="form" :errors="errors" :disabled="readOnly" @industry-change="syncIndustryCode" />
+        <FieldControl field-key="isStarIndustryCode" :form="form" :errors="errors" :disabled="readOnly" />
+        <FieldControl field-key="ratingLevel" :form="form" :errors="errors" :disabled="readOnly" />
         <FieldControl field-key="stateHolding" :form="form" :errors="errors" :disabled="readOnly" />
       </template>
 
@@ -153,7 +191,6 @@
           :errors="errors"
           :disabled="readOnly"
         />
-        <FieldControl field-key="ratingLevel" :form="form" :errors="errors" :disabled="readOnly" />
         <div class="two-cols">
           <FieldControl field-key="rooms" :form="form" :errors="errors" :disabled="readOnly" />
           <FieldControl field-key="beds" :form="form" :errors="errors" :disabled="readOnly" />
@@ -183,6 +220,7 @@
 
       <template v-else-if="module.key === 'G'">
         <MultiPhotoPicker
+          field-key="storefrontPhotos"
           label="住宿单位门头照"
           :required="true"
           :value="form.storefrontPhotos"
@@ -191,6 +229,7 @@
           @change="value => form.storefrontPhotos = value"
         />
         <MultiPhotoPicker
+          field-key="groupPhotos"
           label="核查人员与门头合影"
           :required="true"
           :value="form.groupPhotos"
@@ -198,29 +237,12 @@
           :disabled="readOnly"
           @change="value => form.groupPhotos = value"
         />
-        <SignaturePad
-          label="住宿单位负责人签字"
-          :value="form.managerSignature"
-          :error="errors.managerSignature"
-          :disabled="readOnly"
-          @change="handleSignatureChange"
-        />
       </template>
-    </div>
-
-    <div :ref="el => setModuleRef('PREVIEW', el)" class="m-card module-card module-section preview-card">
-      <div class="module-header">
-        <div>
-          <div class="module-title">提交预览</div>
-          <div class="module-progress">请核对整张表后提交审核</div>
-        </div>
-      </div>
-      <SubmitPreview :form="form" />
     </div>
 
     <div class="m-bottom-bar">
       <el-button v-if="!readOnly" class="draft-action" @click="saveDraft">保存草稿</el-button>
-      <el-button v-if="!readOnly" class="submit-action" type="primary" :loading="submitting" @click="handleSubmit">提交审核</el-button>
+      <el-button v-if="!readOnly" class="submit-action" type="primary" :loading="submitting" @click="handleSubmit">提交预览</el-button>
       <el-button v-if="readOnly" type="primary" @click="router.push('/m/units')">返回清单</el-button>
     </div>
 
@@ -238,10 +260,14 @@
         <div>
           <div class="unit-name">{{ unit.name }}</div>
           <div class="unit-address">{{ unit.creditCode }} · {{ unit.detailAddress }}</div>
+          <div class="unit-address">来源：{{ getOptionLabel('catalogSource', unit.catalogSource) || '未设置' }} · 核查类型：{{ getOptionLabel('checkType', unit.checkType) || '未设置' }}</div>
         </div>
         <el-icon v-if="selectedUnit?.id === unit.id" color="#1a5fc5"><Check /></el-icon>
       </div>
-      <el-empty v-if="filteredUnits.length === 0" description="未找到匹配单位" />
+      <div v-if="filteredUnits.length === 0" class="empty-unit">
+        <el-empty description="未找到匹配单位" />
+        <el-button type="primary" :disabled="!unitSearch.trim()" @click="useSearchAsUnitName">使用搜索内容作为单位名称</el-button>
+      </div>
     </el-drawer>
   </div>
 </template>
@@ -256,21 +282,25 @@ import {
   INDUSTRY_OPTIONS,
   buildCollectionFormFromUnit,
   createEmptyCollectionForm,
-  extractAccommodationPatch,
   getVisibleModuleFields,
   getOptionLabel,
+  inferStarIndustryFlag,
   isFieldVisible,
   isFieldRequired,
   shouldSkipBusinessModule,
 } from '@/utils/collectionSpec'
 import { useCensusStore } from '@/stores/census'
+import { useAreaStore } from '@/stores/area'
 import { useOfflineQueue } from '@/composables/useOfflineQueue'
 import db from '@/db'
+import { buildDivisionCode, getStreetOptions, GUIZHOU_PROVINCE_CODE, GUIZHOU_PROVINCE_NAME, inferDivisionFromAddress, splitDivisionCode } from '@/utils/divisionHelper'
+import { buildMobileSubmitContextKey, saveMobileSubmitContext } from '@/utils/mobileSubmitContext'
 import { INITIAL_REVIEW_STATUS } from '@/utils/reviewFlow'
 
 const route = useRoute()
 const router = useRouter()
 const censusStore = useCensusStore()
+const areaStore = useAreaStore()
 const offlineQueue = useOfflineQueue()
 
 const rootRef = ref(null)
@@ -290,8 +320,13 @@ const editingRecordId = ref(route.query.recordId ? Number(route.query.recordId) 
 const readOnly = ref(false)
 let scrollContainer = null
 
-const formModules = computed(() => COLLECTION_MODULES.filter(module => module.key !== 'PREVIEW' && visibleFields(module).length > 0))
+const formModules = computed(() => COLLECTION_MODULES.filter(module => !['PREVIEW', 'SIGN'].includes(module.key) && visibleFields(module).length > 0))
 const draftKey = computed(() => `collection_form_${route.params.taskId}_${route.params.assignmentId || 'global'}_${selectedUnit.value?.id || form.creditCode || form.unitName || 'new'}`)
+const submitContextKey = computed(() => buildMobileSubmitContextKey(
+  route.params.taskId,
+  route.params.assignmentId || 0,
+  editingRecordId.value || selectedUnit.value?.id || form.creditCode || form.unitName || 'new',
+))
 const totalProgress = computed(() => {
   const fields = formModules.value.flatMap(module => visibleFields(module).filter(key => isFieldRequired(key, form)))
   const done = fields.filter(key => isValidRequiredValue(key)).length
@@ -318,6 +353,11 @@ const locationText = computed(() => {
   return `${form.locationAddress || currentAddressDescription()}${form.locationAccuracy ? ` · 精度约 ${Math.round(form.locationAccuracy)}m` : ''}${suffix}`
 })
 
+const coordinateText = computed(() => {
+  if (!form.location) return ''
+  return `${Number(form.location.longitude).toFixed(6)}, ${Number(form.location.latitude).toFixed(6)}`
+})
+
 const statusBanner = computed(() => {
   if (!offlineQueue.isOnline.value) {
     return { type: 'offline', icon: 'WarningFilled', text: '当前离线，提交会进入同步队列' }
@@ -334,6 +374,7 @@ onMounted(async () => {
   scrollContainer = rootRef.value?.closest('.mobile-content') || document.querySelector('.mobile-content') || window
   scrollContainer.addEventListener('scroll', handleScrollActiveModule, { passive: true })
   handleScrollActiveModule()
+  await areaStore.fetchAreas()
   await censusStore.fetchTaskDetail(route.params.taskId)
   await loadUnits()
   if (editingRecordId.value) await restoreRecord(editingRecordId.value)
@@ -352,6 +393,16 @@ watch(form, () => {
   saveTimer = setTimeout(saveLocalDraft, 700)
 }, { deep: true })
 
+watch(() => form.licenseType, async value => {
+  if (!['no_license', 'other'].includes(value)) return
+  const businessKeys = COLLECTION_MODULES.find(module => module.key === 'B')?.fields || []
+  const nextErrors = { ...errors.value }
+  businessKeys.forEach(key => delete nextErrors[key])
+  errors.value = nextErrors
+  await nextTick()
+  scrollToModule('C')
+})
+
 let saveTimer = null
 
 async function loadUnits() {
@@ -359,14 +410,28 @@ async function loadUnits() {
   if (assignmentId) {
     const assignment = censusStore.assignments.find(a => a.id === Number(assignmentId))
     if (assignment) {
-      units.value = await db.accommodations.where('countyCode').equals(assignment.areaCode).toArray()
+      const targetIds = parseArray(assignment.targetAccommodationIds).map(Number).filter(Boolean)
+      if (targetIds.length) {
+        const targetUnits = []
+        for (const id of targetIds) {
+          const unit = await db.accommodations.get(id)
+          if (unit && !unit.deletedAt) targetUnits.push(unit)
+        }
+        units.value = targetUnits
+        return
+      }
+      units.value = (await db.accommodations.where('countyCode').equals(assignment.areaCode).toArray()).filter(item => !item.deletedAt)
       if (units.value.length === 0) {
-        units.value = await db.accommodations.where('cityCode').equals(assignment.areaCode).toArray()
+        units.value = (await db.accommodations.where('cityCode').equals(assignment.areaCode).toArray()).filter(item => !item.deletedAt)
       }
       return
     }
   }
-  units.value = await db.accommodations.toArray()
+  units.value = (await db.accommodations.toArray()).filter(item => !item.deletedAt)
+}
+
+function parseArray(raw) {
+  try { return Array.isArray(raw) ? raw : JSON.parse(raw || '[]') } catch { return [] }
 }
 
 function selectUnit(unit) {
@@ -375,6 +440,7 @@ function selectUnit(unit) {
   selectedUnit.value = unit
   editingRecordId.value = null
   Object.assign(form, unitForm)
+  clearOcrBusinessFields()
   fillMissingFormValues(form, currentForm)
   const restored = restoreLocalDraft()
   if (restored) {
@@ -384,6 +450,29 @@ function selectUnit(unit) {
     ElMessage.success('已回写名录已有字段')
   }
   showUnitPicker.value = false
+}
+
+function clearOcrBusinessFields() {
+  ;[
+    'registeredName',
+    'creditCode',
+    'registrationAuthority',
+    'registrationAuthorityOther',
+    'registeredAddress',
+    'registeredDivisionAddress',
+    'registeredDivisionCode',
+    'legalRepresentative',
+  ].forEach(key => { form[key] = createEmptyCollectionForm()[key] })
+}
+
+function useSearchAsUnitName() {
+  const keyword = unitSearch.value.trim()
+  if (!keyword) return
+  selectedUnit.value = null
+  form.unitName = keyword
+  if (!form.operatingName) form.operatingName = keyword
+  showUnitPicker.value = false
+  ElMessage.success('已将搜索内容填入单位名称')
 }
 
 function fillMissingFormValues(target, source) {
@@ -476,14 +565,15 @@ function handleBusinessLicensePhoto({ dataUrl, name }) {
 
 function mockOcrFill() {
   const source = selectedUnit.value || {}
-  form.registeredName ||= source.name || form.unitName
-  form.creditCode ||= source.creditCode || ''
+  form.registeredName = source.registeredName || source.name || form.unitName || ''
+  form.creditCode = source.creditCode || ''
+  form.registrationAuthority = source.registrationAuthority || 'market'
   form.registrationDate ||= source.openDate || new Date().toISOString().slice(0, 10)
-  form.registeredAddress ||= source.registeredAddress || source.detailAddress || form.locationAddress || ''
-  form.registeredDivisionCode ||= source.divisionCode || form.divisionCode || (source.countyCode ? `${source.countyCode}000000` : '')
-  form.legalRepresentative ||= source.legalRepresentative || '待人工核对'
+  form.registeredAddress = source.registeredAddress || source.detailAddress || form.locationAddress || ''
+  applyDivisionFromAddress('registeredDivision', 'registeredAddress', 'registeredDivisionCode')
+  form.legalRepresentative = source.legalRepresentative || ''
   form.legalRepresentativePhone ||= source.legalRepresentativePhone || ''
-  ElMessage.success('已模拟 OCR 回填，请逐项核对')
+  ElMessage.success('已按营业执照照片模拟识别回填，请逐项核对')
 }
 
 function syncRegisteredName() {
@@ -495,11 +585,48 @@ function currentAddressDescription() {
 }
 
 function syncRegisteredAddress() {
-  if (sameAsRegisteredAddress.value) form.actualAddress = form.registeredAddress
+  if (sameAsRegisteredAddress.value) {
+    form.actualAddress = form.registeredAddress
+    copyRegisteredDivisionToActual()
+  }
+}
+
+function applyDivisionFromAddress(prefix, addressKey, codeKey) {
+  const inferred = inferDivisionFromAddress(form[addressKey], areaStore.areas)
+  form[`${prefix}ProvinceCode`] = inferred.provinceCode
+  form[`${prefix}CityCode`] = inferred.cityCode
+  form[`${prefix}CountyCode`] = inferred.countyCode
+  form[`${prefix}StreetCode`] = inferred.streetCode || form[`${prefix}StreetCode`] || '999'
+  form[`${prefix}StreetName`] = inferred.streetName || form[`${prefix}StreetName`]
+  form[codeKey] = buildDivisionCode(form[`${prefix}CountyCode`], form[`${prefix}StreetCode`] || '999')
+  form[prefix === 'division' ? 'actualDivisionAddress' : 'registeredDivisionAddress'] = formatDivisionAddressFromForm(prefix)
+}
+
+function copyRegisteredDivisionToActual() {
+  form.actualDivisionAddress = form.registeredDivisionAddress
+  form.divisionCode = form.registeredDivisionCode
+  form.divisionProvinceCode = form.registeredDivisionProvinceCode
+  form.divisionCityCode = form.registeredDivisionCityCode
+  form.divisionCountyCode = form.registeredDivisionCountyCode
+  form.divisionStreetCode = form.registeredDivisionStreetCode
+  form.divisionStreetName = form.registeredDivisionStreetName
+}
+
+function areaName(code) {
+  return areaStore.getAreaName(code) || ''
+}
+
+function formatDivisionAddressFromForm(prefix) {
+  const province = GUIZHOU_PROVINCE_NAME
+  const city = areaName(form[`${prefix}CityCode`])
+  const county = areaName(form[`${prefix}CountyCode`])
+  const street = form[`${prefix}StreetName`] || getStreetOptions(form[`${prefix}CountyCode`]).find(item => item.code === form[`${prefix}StreetCode`])?.name || ''
+  return [province, city, county, street].filter(Boolean).join(' / ')
 }
 
 function syncIndustryCode(value) {
   form.economyIndustryCode = value
+  form.isStarIndustryCode = inferStarIndustryFlag(value)
 }
 
 function handleOtaChange(value) {
@@ -545,6 +672,15 @@ function handleScrollActiveModule() {
 function scrollToFirstError() {
   const firstErrorKey = Object.keys(errors.value)[0]
   if (!firstErrorKey) return
+  const target = rootRef.value?.querySelector(`[data-field-key="${firstErrorKey}"]`)
+  if (target) {
+    target.scrollIntoView({ behavior: 'auto', block: 'center' })
+    window.setTimeout(() => {
+      target.querySelector('input, select, textarea, button')?.focus?.()
+      handleScrollActiveModule()
+    }, 40)
+    return
+  }
   const module = formModules.value.find(item => item.fields.includes(firstErrorKey))
   if (module) scrollToModule(module.key)
 }
@@ -587,11 +723,6 @@ function isValidRequiredValue(key) {
   if (value === '' || value === null || value === undefined) return false
   if (field.pattern) return field.pattern.test(String(value))
   return true
-}
-
-function handleSignatureChange(dataUrl) {
-  form.managerSignature = dataUrl
-  form.managerSignatureAt = new Date().toISOString()
 }
 
 function validateModule(module) {
@@ -639,24 +770,22 @@ async function handleSubmit() {
   if (readOnly.value) return
   if (!validateAll()) {
     ElMessage.error('存在未完成字段，请核对后提交')
-    nextTick(scrollToFirstError)
+    scrollToFirstError()
     return
   }
-  submitting.value = true
-  try {
-    const recordId = await saveRecord('submitted')
-    if (route.params.assignmentId) {
-      await censusStore.updateAssignment(Number(route.params.assignmentId), { status: 'submitted', progress: 100, submittedAt: new Date().toISOString() })
-    }
-    offlineQueue.flush()
-    clearLocalDraft()
-    ElMessage.success(`提交成功，记录号 ${recordId}`)
-    router.back()
-  } catch (err) {
-    ElMessage.error('提交失败：' + err.message)
-  } finally {
-    submitting.value = false
-  }
+  saveLocalDraft()
+  saveMobileSubmitContext(submitContextKey.value, {
+    taskId: Number(route.params.taskId),
+    assignmentId: route.params.assignmentId ? Number(route.params.assignmentId) : 0,
+    selectedUnitId: selectedUnit.value?.id || null,
+    editingRecordId: editingRecordId.value || null,
+    draftKey: draftKey.value,
+    form: { ...form },
+  })
+  router.push({
+    path: `/m/entry/${route.params.taskId}/${route.params.assignmentId || 0}/preview`,
+    query: { ctx: submitContextKey.value },
+  })
 }
 
 async function saveRecord(status) {
@@ -828,7 +957,7 @@ const FieldControl = defineComponent({
       } else {
         control = h('input', { ...common, type: field.type === 'integer' ? 'number' : field.type === 'date' ? 'date' : field.type === 'tel' ? 'tel' : 'text' })
       }
-      return h('div', { class: 'm-form-group' }, [
+      return h('div', { class: 'm-form-group', 'data-field-key': props.fieldKey }, [
         label,
         control,
         props.errors[props.fieldKey] ? h('div', { class: 'm-error' }, props.errors[props.fieldKey]) : null,
@@ -837,8 +966,273 @@ const FieldControl = defineComponent({
   },
 })
 
+const DivisionCodePicker = defineComponent({
+  props: {
+    prefix: { type: String, required: true },
+    addressFieldKey: { type: String, required: true },
+    addressLabel: { type: String, required: true },
+    addressCode: { type: String, required: true },
+    codeFieldKey: { type: String, required: true },
+    codeLabel: { type: String, required: true },
+    codeCode: { type: String, required: true },
+    inferButtonLabel: { type: String, default: '按地址识别' },
+    form: { type: Object, required: true },
+    errors: { type: Object, required: true },
+    disabled: { type: Boolean, default: false },
+    areas: { type: Array, default: () => [] },
+  },
+  setup(props) {
+    const pickerVisible = ref(false)
+    const pickerLevel = ref('city')
+    const provinceKey = computed(() => `${props.prefix}ProvinceCode`)
+    const cityKey = computed(() => `${props.prefix}CityCode`)
+    const countyKey = computed(() => `${props.prefix}CountyCode`)
+    const streetCodeKey = computed(() => `${props.prefix}StreetCode`)
+    const streetNameKey = computed(() => `${props.prefix}StreetName`)
+    const divisionAddressKey = computed(() => props.prefix === 'division' ? 'actualDivisionAddress' : `${props.prefix}Address`)
+    const cities = computed(() => props.areas.filter(area => area.level === 2 && area.parentCode === GUIZHOU_PROVINCE_CODE))
+    const counties = computed(() => props.areas.filter(area => area.level === 3 && area.parentCode === props.form[cityKey.value]))
+    const streets = computed(() => getStreetOptions(props.form[countyKey.value]))
+    const currentCity = computed(() => props.areas.find(area => area.code === props.form[cityKey.value]))
+    const currentCounty = computed(() => props.areas.find(area => area.code === props.form[countyKey.value]))
+    const currentStreet = computed(() => streets.value.find(item => item.code === props.form[streetCodeKey.value]))
+    const divisionAddress = computed(() => {
+      const province = GUIZHOU_PROVINCE_NAME
+      const city = currentCity.value?.name || ''
+      const county = currentCounty.value?.name || ''
+      const street = props.form[streetNameKey.value] || currentStreet.value?.name || ''
+      return [province, city, county, street].filter(Boolean).join(' / ')
+    })
+    const selectedPath = computed(() => [
+      { level: 'city', label: GUIZHOU_PROVINCE_NAME, selected: true, available: true },
+      { level: 'city', label: currentCity.value?.name || '请选择市州', selected: !!currentCity.value, available: true },
+      { level: 'county', label: currentCounty.value?.name || '请选择区县', selected: !!currentCounty.value, available: !!currentCity.value },
+      { level: 'street', label: props.form[streetNameKey.value] || currentStreet.value?.name || '请选择街道/乡镇', selected: !!(props.form[streetNameKey.value] || currentStreet.value), available: !!currentCounty.value },
+    ])
+    const currentOptions = computed(() => {
+      if (pickerLevel.value === 'city') return cities.value.map(area => ({ code: area.code, name: area.name, type: 'area' }))
+      if (pickerLevel.value === 'county') return counties.value.map(area => ({ code: area.code, name: area.name, type: 'area' }))
+      return [
+        ...streets.value.map(item => ({ code: item.code, name: item.name, type: 'street' })),
+        { code: '__none__', name: '暂不选择', type: 'empty' },
+      ]
+    })
+    const pickerHint = computed(() => {
+      if (pickerLevel.value === 'city') return '选择市州'
+      if (pickerLevel.value === 'county') return '选择区县'
+      return '选择街道/乡镇'
+    })
+
+    watch(() => props.form[props.codeFieldKey], value => {
+      if (!value || props.form[countyKey.value]) return
+      const parsed = splitDivisionCode(value)
+      if (!parsed.countyCode) return
+      const county = props.areas.find(area => area.code === parsed.countyCode)
+      props.form[countyKey.value] = parsed.countyCode
+      props.form[cityKey.value] = county?.parentCode || ''
+      props.form[provinceKey.value] = GUIZHOU_PROVINCE_CODE
+      props.form[streetCodeKey.value] = parsed.streetCode || ''
+      props.form[streetNameKey.value] = streets.value.find(item => item.code === parsed.streetCode)?.name || props.form[streetNameKey.value] || ''
+      syncDivisionAddress()
+    }, { immediate: true })
+
+    watch(divisionAddress, syncDivisionAddress)
+
+    function applyAddress(address) {
+      const inferred = inferDivisionFromAddress(address, props.areas)
+      props.form[provinceKey.value] = inferred.provinceCode
+      props.form[cityKey.value] = inferred.cityCode
+      props.form[countyKey.value] = inferred.countyCode
+      props.form[streetCodeKey.value] = inferred.streetCode || props.form[streetCodeKey.value] || ''
+      props.form[streetNameKey.value] = inferred.streetName || props.form[streetNameKey.value]
+      generate()
+    }
+
+    function openPicker() {
+      if (props.disabled) return
+      if (!props.form[cityKey.value]) pickerLevel.value = 'city'
+      else if (!props.form[countyKey.value]) pickerLevel.value = 'county'
+      else pickerLevel.value = 'street'
+      pickerVisible.value = true
+    }
+
+    function resetAfterCity() {
+      props.form[countyKey.value] = ''
+      props.form[streetCodeKey.value] = ''
+      props.form[streetNameKey.value] = ''
+      props.form[props.codeFieldKey] = ''
+      syncDivisionAddress()
+    }
+
+    function resetAfterCounty() {
+      props.form[streetCodeKey.value] = ''
+      props.form[streetNameKey.value] = ''
+      props.form[props.codeFieldKey] = ''
+      syncDivisionAddress()
+    }
+
+    function goLevel(level) {
+      if (props.disabled) return
+      if (level === 'county' && !props.form[cityKey.value]) return
+      if (level === 'street' && !props.form[countyKey.value]) return
+      pickerLevel.value = level
+    }
+
+    function selectOption(option) {
+      if (pickerLevel.value === 'city') {
+        props.form[cityKey.value] = option.code
+        resetAfterCity()
+        pickerLevel.value = 'county'
+        return
+      }
+      if (pickerLevel.value === 'county') {
+        props.form[countyKey.value] = option.code
+        resetAfterCounty()
+        pickerLevel.value = 'street'
+        return
+      }
+      if (option.code === '__none__') {
+        props.form[streetCodeKey.value] = ''
+        props.form[streetNameKey.value] = ''
+      } else {
+        props.form[streetCodeKey.value] = option.code
+        props.form[streetNameKey.value] = option.name
+      }
+      generate()
+      pickerVisible.value = false
+    }
+
+    function generate() {
+      props.form[props.codeFieldKey] = buildDivisionCode(props.form[countyKey.value], props.form[streetCodeKey.value] || '999')
+      syncDivisionAddress()
+    }
+
+    function syncDivisionAddress() {
+      props.form[divisionAddressKey.value] = divisionAddress.value
+    }
+
+    function isSelectedOption(option) {
+      if (pickerLevel.value === 'city') return option.code === props.form[cityKey.value]
+      if (pickerLevel.value === 'county') return option.code === props.form[countyKey.value]
+      if (option.code === '__none__') return props.form[countyKey.value] && !props.form[streetCodeKey.value]
+      return option.code === props.form[streetCodeKey.value]
+    }
+
+    function initialForName(name) {
+      const first = String(name || '').trim().charAt(0)
+      const map = {
+        安: 'A',
+        白: 'B',
+        毕: 'B',
+        碧: 'B',
+        北: 'B',
+        大: 'D',
+        都: 'D',
+        龚: 'G',
+        贵: 'G',
+        黄: 'H',
+        花: 'H',
+        凯: 'K',
+        六: 'L',
+        麦: 'M',
+        牛: 'N',
+        黔: 'Q',
+        泉: 'Q',
+        人: 'R',
+        沙: 'S',
+        市: 'S',
+        铜: 'T',
+        万: 'W',
+        文: 'W',
+        新: 'X',
+        延: 'Y',
+        艳: 'Y',
+        云: 'Y',
+        遵: 'Z',
+        中: 'Z',
+      }
+      return map[first] || ''
+    }
+
+    return () => h('div', { class: 'm-form-group division-picker', 'data-field-key': divisionAddressKey.value }, [
+      h('div', { class: 'm-form-label' }, [h('span', { class: 'required' }, '*'), `${props.addressCode} ${props.addressLabel}`]),
+      h('div', { class: 'division-actions' }, [
+        h('button', { type: 'button', disabled: props.disabled || !props.form[props.addressFieldKey], onClick: () => applyAddress(props.form[props.addressFieldKey]) }, props.inferButtonLabel),
+      ]),
+      h('button', {
+        type: 'button',
+        class: ['division-select-card', { 'has-error': props.errors[divisionAddressKey.value] }],
+        disabled: props.disabled,
+        onClick: openPicker,
+      }, [
+        h('span', { class: ['division-select-text', { placeholder: !props.form[divisionAddressKey.value] }] }, props.form[divisionAddressKey.value] || '请选择省 / 市州 / 区县 / 街道'),
+        h('span', { class: 'division-select-arrow' }, '›'),
+      ]),
+      h('input', {
+        class: 'm-input street-input',
+        value: props.form[streetNameKey.value],
+        disabled: props.disabled || !props.form[countyKey.value],
+        placeholder: '可修改街道/乡镇名称',
+        onInput: event => {
+          props.form[streetNameKey.value] = event.target.value
+          generate()
+        },
+      }),
+      h('div', { class: 'm-form-label division-code-label' }, [h('span', { class: 'required' }, '*'), `${props.codeCode} ${props.codeLabel}`]),
+      h('div', { class: 'division-code-row', 'data-field-key': props.codeFieldKey }, [
+        h('input', {
+          class: ['m-input', { 'has-error': props.errors[props.codeFieldKey] }],
+          value: props.form[props.codeFieldKey],
+          disabled: props.disabled,
+          placeholder: '确认区划地址后自动生成',
+          onInput: event => { props.form[props.codeFieldKey] = event.target.value },
+        }),
+      ]),
+      pickerVisible.value ? h('div', { class: 'division-sheet-mask', onClick: () => { pickerVisible.value = false } }, [
+        h('div', { class: 'division-sheet', onClick: event => event.stopPropagation() }, [
+          h('div', { class: 'division-sheet-header' }, [
+            h('div', { class: 'division-sheet-title' }, '请选择所在地区'),
+            h('button', {
+              type: 'button',
+              class: 'division-sheet-close',
+              'aria-label': '关闭地区选择',
+              onClick: () => { pickerVisible.value = false },
+            }, '×'),
+          ]),
+          h('div', { class: 'division-path' }, selectedPath.value.map((item, index) => h('button', {
+            type: 'button',
+            class: ['division-path-item', { active: item.level === pickerLevel.value, selected: item.selected, disabled: !item.available }],
+            disabled: !item.available,
+            onClick: () => goLevel(item.level),
+          }, [
+            h('span', { class: 'division-path-dot' }),
+            h('span', { class: 'division-path-label' }, item.label),
+            index > 0 ? h('span', { class: 'division-path-chevron' }, '›') : null,
+          ]))),
+          h('div', { class: 'division-option-header' }, pickerHint.value),
+          h('div', { class: 'division-option-list' }, currentOptions.value.map(option => {
+            const selected = isSelectedOption(option)
+            return h('button', {
+              type: 'button',
+              class: ['division-option', { selected, empty: option.code === '__none__' }],
+              onClick: () => selectOption(option),
+            }, [
+              h('span', { class: 'division-option-index' }, option.code === '__none__' ? '' : initialForName(option.name)),
+              h('span', { class: 'division-option-name' }, option.name),
+              selected ? h('span', { class: 'division-option-check' }, '✓') : null,
+            ])
+          })),
+        ]),
+      ]) : null,
+      props.errors[divisionAddressKey.value] ? h('div', { class: 'm-error' }, props.errors[divisionAddressKey.value]) : null,
+      props.errors[props.codeFieldKey] ? h('div', { class: 'm-error' }, props.errors[props.codeFieldKey]) : null,
+    ])
+  },
+})
+
 const PhotoPicker = defineComponent({
   props: {
+    fieldKey: { type: String, default: '' },
     label: { type: String, required: true },
     required: { type: Boolean, default: false },
     value: { type: String, default: '' },
@@ -854,7 +1248,7 @@ const PhotoPicker = defineComponent({
       emit('change', { dataUrl: await fileToDataUrl(file), name: file.name })
       event.target.value = ''
     }
-    return () => h('div', { class: 'm-form-group' }, [
+    return () => h('div', { class: 'm-form-group', 'data-field-key': props.fieldKey }, [
       h('div', { class: 'm-form-label' }, [props.required ? h('span', { class: 'required' }, '*') : null, props.label]),
       props.value
         ? h(props.disabled ? 'div' : 'label', { class: ['file-row', { clickable: !props.disabled }] }, [
@@ -879,6 +1273,7 @@ const PhotoPicker = defineComponent({
 
 const MultiPhotoPicker = defineComponent({
   props: {
+    fieldKey: { type: String, default: '' },
     label: { type: String, required: true },
     required: { type: Boolean, default: false },
     value: { type: Array, default: () => [] },
@@ -919,7 +1314,7 @@ const MultiPhotoPicker = defineComponent({
     function remove(index) {
       emit('change', props.value.filter((_, i) => i !== index))
     }
-    return () => h('div', { class: 'm-form-group' }, [
+    return () => h('div', { class: 'm-form-group', 'data-field-key': props.fieldKey }, [
       h('div', { class: 'm-form-label' }, [props.required ? h('span', { class: 'required' }, '*') : null, props.label]),
       props.value.length ? h('div', { class: 'file-list' }, props.value.map((photo, index) => h('div', { class: 'file-row' }, [
         h(props.disabled ? 'span' : 'label', { class: ['file-name', { 'clickable-name': !props.disabled }] }, [
@@ -937,105 +1332,6 @@ const MultiPhotoPicker = defineComponent({
       ]),
       props.error ? h('div', { class: 'm-error' }, props.error) : null,
     ])
-  },
-})
-
-const SignaturePad = defineComponent({
-  props: {
-    label: { type: String, default: '住宿单位负责人签字' },
-    value: { type: String, default: '' },
-    error: { type: String, default: '' },
-    disabled: { type: Boolean, default: false },
-  },
-  emits: ['change'],
-  setup(props, { emit }) {
-    const canvasRef = ref(null)
-    let drawing = false
-    function point(event) {
-      const canvas = canvasRef.value
-      const rect = canvas.getBoundingClientRect()
-      const source = event.touches?.[0] || event
-      return { x: source.clientX - rect.left, y: source.clientY - rect.top }
-    }
-    function start(event) {
-      if (props.disabled) return
-      drawing = true
-      const ctx = canvasRef.value.getContext('2d')
-      const p = point(event)
-      ctx.beginPath()
-      ctx.moveTo(p.x, p.y)
-      event.preventDefault()
-    }
-    function move(event) {
-      if (props.disabled || !drawing) return
-      const ctx = canvasRef.value.getContext('2d')
-      const p = point(event)
-      ctx.lineWidth = 2.4
-      ctx.lineCap = 'round'
-      ctx.strokeStyle = '#1f2937'
-      ctx.lineTo(p.x, p.y)
-      ctx.stroke()
-      emit('change', canvasRef.value.toDataURL('image/png'))
-      event.preventDefault()
-    }
-    function end() {
-      drawing = false
-      if (canvasRef.value) emit('change', canvasRef.value.toDataURL('image/png'))
-    }
-    function clear() {
-      if (props.disabled) return
-      const canvas = canvasRef.value
-      canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height)
-      emit('change', '')
-    }
-    return () => h('div', { class: 'm-form-group' }, [
-      h('div', { class: 'm-form-label' }, [h('span', { class: 'required' }, '*'), props.label]),
-      props.value ? h('img', { class: 'signature-preview', src: props.value }) : null,
-      h('div', { class: 'signature-wrap' }, [
-        h('div', { class: 'signature-placeholder' }, '签字区域'),
-        h('canvas', {
-          ref: canvasRef,
-          class: ['signature-pad', { error: props.error }],
-          width: 640,
-          height: 220,
-          onMousedown: start,
-          onMousemove: move,
-          onMouseup: end,
-          onMouseleave: end,
-          onTouchstart: start,
-          onTouchmove: move,
-          onTouchend: end,
-        }),
-      ]),
-      props.disabled ? null : h('div', { class: 'inline-actions' }, [h('button', { type: 'button', class: 'text-button', onClick: clear }, '重新签名')]),
-      props.error ? h('div', { class: 'm-error' }, props.error) : null,
-    ])
-  },
-})
-
-const SubmitPreview = defineComponent({
-  props: { form: { type: Object, required: true } },
-  setup(props) {
-    const rows = computed(() => COLLECTION_MODULES.filter(m => m.key !== 'PREVIEW').map(module => ({
-      module,
-      fields: (module.key === 'B' && shouldSkipBusinessModule(props.form) ? [] : getVisibleModuleFields(module, props.form))
-        .map(key => ({ key, field: COLLECTION_FIELD_MAP[key], value: props.form[key] })),
-    })).filter(group => group.fields.length > 0))
-    function valueText(key, field, value) {
-      if (key === 'location') return props.form.location ? (props.form.locationAddress || '当前位置已获取') : ''
-      if (field.type === 'photo') return value ? (props.form.businessLicensePhotoName || '已上传图片') : '未上传'
-      if (field.type === 'signature') return value ? '已签字' : '未签字'
-      if (field.type === 'photos') return Array.isArray(value) && value.length ? value.map((photo, index) => photo.name || `现场照片${index + 1}.jpg`).join('、') : '未上传'
-      if (['select', 'radio', 'checkbox'].includes(field.type)) return getOptionLabel(key, value)
-      return value ?? ''
-    }
-    return () => h('div', { class: 'preview-list' }, rows.value.map(group => h('div', { class: 'preview-section' }, [
-      h('div', { class: 'preview-title' }, `${group.module.key} ${group.module.title}`),
-      ...group.fields.map(({ key, field, value }) => h('div', { class: 'preview-row' }, [
-        h('span', { class: 'preview-key' }, `${field.label}：`),
-        h('strong', null, valueText(key, field, value) || '-'),
-      ])),
-    ])))
   },
 })
 </script>
@@ -1260,10 +1556,6 @@ const SubmitPreview = defineComponent({
   scroll-margin-top: 68px;
 }
 
-.preview-card {
-  margin-bottom: 86px;
-}
-
 .module-header {
   display: flex;
   justify-content: space-between;
@@ -1342,6 +1634,16 @@ const SubmitPreview = defineComponent({
   border-radius: 12px;
   border: 1px solid #d8e8ff;
   background: #eef6ff;
+
+  &.has-error {
+    border-color: #f56c6c;
+    background: #fffafa;
+  }
+}
+
+.location-error {
+  margin-top: -10px;
+  margin-bottom: 14px;
 }
 
 .panel-title {
@@ -1353,6 +1655,35 @@ const SubmitPreview = defineComponent({
   margin-top: 4px;
   font-size: 12px;
   color: #606266;
+}
+
+.location-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+
+  div {
+    min-width: 0;
+    padding: 9px 10px;
+    border-radius: 10px;
+    background: #fff;
+  }
+
+  span {
+    display: block;
+    margin-bottom: 4px;
+    color: #6b7280;
+    font-size: 11px;
+  }
+
+  strong {
+    display: block;
+    color: #1f2937;
+    font-size: 13px;
+    line-height: 1.35;
+    word-break: break-word;
+  }
 }
 
 .inline-actions,
@@ -1553,84 +1884,323 @@ const SubmitPreview = defineComponent({
   font-size: 12px;
 }
 
-.signature-wrap {
-  position: relative;
-}
-
-.signature-placeholder {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  color: #c0c4cc;
-  font-size: 18px;
-  pointer-events: none;
-}
-
-.signature-pad {
-  width: 100%;
-  height: 168px;
-  border: 1px dashed #a8abb2;
-  border-radius: 12px;
-  background: #fff;
-
-  &.error {
-    border-color: #f56c6c;
-  }
-}
-
-.signature-preview {
-  width: 100%;
-  max-height: 80px;
-  object-fit: contain;
-  border-radius: 8px;
-  background: #f8fafc;
-  margin-bottom: 8px;
-}
-
-.text-button {
-  border: 0;
-  background: transparent;
-  color: #1a5fc5;
-  font-size: 13px;
-}
-
-.preview-section {
-  padding: 12px 0;
-  border-bottom: 1px solid #eef0f4;
-}
-
-.preview-title {
-  font-size: 14px;
-  font-weight: 700;
-  margin-bottom: 8px;
-}
-
-.preview-row {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 9px 0;
-  font-size: 14px;
-
-  .preview-key {
-    color: #000;
-    font-weight: 600;
-  }
-
-  strong {
-    color: #003f88;
-    font-weight: 600;
-    word-break: break-word;
-  }
-}
-
 .drawer-search {
   position: sticky;
   top: 0;
   z-index: 2;
   padding: 0 4px 12px;
   background: #fff;
+}
+
+.empty-unit {
+  padding: 12px 4px 20px;
+  text-align: center;
+}
+
+:deep(.division-picker) {
+  .division-actions {
+    display: block;
+    margin-bottom: 10px;
+
+    button {
+      width: 100%;
+      min-height: 44px;
+      border: 1px solid #d8e8ff;
+      border-radius: 12px;
+      color: #1a5fc5;
+      background: #eef6ff;
+      font-size: 14px;
+      font-weight: 700;
+      touch-action: manipulation;
+      transition: background-color 0.2s ease, transform 0.15s ease;
+
+      &:disabled {
+        opacity: 0.45;
+      }
+
+      &:active:not(:disabled) {
+        transform: scale(0.99);
+      }
+    }
+  }
+
+  .division-select-card {
+    width: 100%;
+    min-height: 52px;
+    padding: 12px 12px 12px 14px;
+    border: 1px solid #dce8f7;
+    border-radius: 14px;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    color: #111827;
+    text-align: left;
+    touch-action: manipulation;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+
+    &.has-error {
+      border-color: #f56c6c;
+      background: #fffafa;
+    }
+
+    &:disabled {
+      opacity: 0.65;
+    }
+
+    &:active:not(:disabled) {
+      transform: scale(0.99);
+      border-color: #1a5fc5;
+      box-shadow: 0 8px 18px rgba(26, 95, 197, 0.08);
+    }
+  }
+
+  .division-select-text {
+    min-width: 0;
+    flex: 1;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.45;
+    word-break: break-word;
+
+    &.placeholder {
+      color: #8b95a5;
+      font-weight: 600;
+    }
+  }
+
+  .division-select-arrow {
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    color: #9aa4b2;
+    background: #f3f6fb;
+    font-size: 24px;
+    line-height: 1;
+  }
+
+  .street-input {
+    margin-top: 10px;
+  }
+
+  .division-code-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    margin-top: 10px;
+
+    button {
+      min-height: 48px;
+      border: 0;
+      border-radius: 12px;
+      color: #fff;
+      background: #1a5fc5;
+      font-size: 15px;
+      font-weight: 700;
+
+      &:disabled {
+        opacity: 0.45;
+      }
+    }
+  }
+
+  .division-sheet-mask {
+    position: fixed;
+    inset: 0;
+    z-index: 2200;
+    display: flex;
+    align-items: flex-end;
+    background: rgba(15, 23, 42, 0.46);
+  }
+
+  .division-sheet {
+    width: 100%;
+    max-height: min(76vh, 720px);
+    padding: 18px 0 calc(14px + env(safe-area-inset-bottom));
+    border-radius: 22px 22px 0 0;
+    background: #fff;
+    box-shadow: 0 -16px 42px rgba(15, 23, 42, 0.18);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: divisionSheetIn 0.22s ease-out;
+  }
+
+  .division-sheet-header {
+    min-height: 48px;
+    padding: 0 18px 8px;
+    display: grid;
+    grid-template-columns: 44px 1fr 44px;
+    align-items: center;
+  }
+
+  .division-sheet-title {
+    grid-column: 2;
+    color: #101828;
+    font-size: 22px;
+    font-weight: 800;
+    text-align: center;
+    letter-spacing: 0;
+  }
+
+  .division-sheet-close {
+    grid-column: 3;
+    width: 44px;
+    height: 44px;
+    border: 0;
+    border-radius: 999px;
+    color: #111827;
+    background: #fff;
+    font-size: 34px;
+    line-height: 1;
+    touch-action: manipulation;
+
+    &:active {
+      background: #f3f4f6;
+    }
+  }
+
+  .division-path {
+    position: relative;
+    padding: 14px 28px 18px 42px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border-bottom: 1px solid #eef0f4;
+
+    &::before {
+      content: '';
+      position: absolute;
+      left: 42px;
+      top: 28px;
+      bottom: 34px;
+      width: 3px;
+      border-radius: 999px;
+      background: #ff6b00;
+    }
+  }
+
+  .division-path-item {
+    position: relative;
+    min-height: 46px;
+    padding: 0 28px 0 30px;
+    border: 0;
+    background: transparent;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #1f2937;
+    font-size: 18px;
+    font-weight: 650;
+    text-align: left;
+    touch-action: manipulation;
+
+    &.active,
+    &:active:not(:disabled) {
+      color: #ff6b00;
+    }
+
+    &.disabled {
+      color: #9aa4b2;
+    }
+  }
+
+  .division-path-dot {
+    position: absolute;
+    left: -6px;
+    width: 13px;
+    height: 13px;
+    border-radius: 999px;
+    background: #ff6b00;
+    box-shadow: 0 0 0 4px #fff;
+  }
+
+  .division-path-label {
+    min-width: 0;
+    flex: 1;
+    line-height: 1.35;
+    word-break: break-word;
+  }
+
+  .division-path-chevron {
+    flex: 0 0 auto;
+    color: #c4cad4;
+    font-size: 28px;
+    line-height: 1;
+  }
+
+  .division-option-header {
+    padding: 14px 32px 8px;
+    color: #7b8494;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .division-option-list {
+    min-height: 180px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .division-option {
+    width: 100%;
+    min-height: 56px;
+    padding: 0 32px;
+    border: 0;
+    background: #fff;
+    display: grid;
+    grid-template-columns: 36px 1fr 32px;
+    align-items: center;
+    gap: 12px;
+    color: #1f2937;
+    text-align: left;
+    touch-action: manipulation;
+
+    &:active {
+      background: #fff7ed;
+    }
+
+    &.selected {
+      color: #ff6b00;
+      font-weight: 800;
+    }
+  }
+
+  .division-option-index {
+    color: #8490a3;
+    font-size: 15px;
+    font-weight: 500;
+  }
+
+  .division-option-name {
+    min-width: 0;
+    font-size: 18px;
+    line-height: 1.35;
+    word-break: break-word;
+  }
+
+  .division-option-check {
+    color: #ff6b00;
+    font-size: 26px;
+    font-weight: 800;
+    text-align: right;
+  }
+}
+
+@keyframes divisionSheetIn {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .unit-item {
@@ -1890,78 +2460,6 @@ const SubmitPreview = defineComponent({
   flex: 0 0 auto;
   color: #1a5fc5;
   font-size: 12px;
-}
-
-:deep(.signature-wrap) {
-  position: relative;
-}
-
-:deep(.signature-placeholder) {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  color: #c0c4cc;
-  font-size: 18px;
-  pointer-events: none;
-}
-
-:deep(.signature-pad) {
-  width: 100%;
-  height: 168px;
-  border: 1px dashed #a8abb2;
-  border-radius: 12px;
-  background: #fff;
-}
-
-:deep(.signature-pad.error) {
-  border-color: #f56c6c;
-}
-
-:deep(.signature-preview) {
-  width: 100%;
-  max-height: 80px;
-  object-fit: contain;
-  border-radius: 8px;
-  background: #f8fafc;
-  margin-bottom: 8px;
-}
-
-:deep(.text-button) {
-  border: 0;
-  background: transparent;
-  color: #1a5fc5;
-  font-size: 13px;
-}
-
-:deep(.preview-section) {
-  padding: 12px 0;
-  border-bottom: 1px solid #eef0f4;
-}
-
-:deep(.preview-title) {
-  font-size: 14px;
-  font-weight: 700;
-  margin-bottom: 8px;
-}
-
-:deep(.preview-row) {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 9px 0;
-  font-size: 14px;
-}
-
-:deep(.preview-row .preview-key) {
-  color: #000;
-  font-weight: 600;
-}
-
-:deep(.preview-row strong) {
-  color: #003f88;
-  font-weight: 600;
-  word-break: break-word;
 }
 
 :deep(.el-button) {

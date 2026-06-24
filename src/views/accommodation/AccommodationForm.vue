@@ -66,6 +66,7 @@ import {
   createEmptyCollectionForm,
   extractAccommodationPatch,
   getVisibleModuleFields,
+  inferStarIndustryFlag,
   shouldSkipBusinessModule,
 } from '@/utils/collectionSpec'
 
@@ -100,7 +101,7 @@ function fieldLabel(key) {
 
 function fieldSpan(key) {
   const type = FIELD_MAP[key]?.type
-  return ['textarea', 'checkbox', 'photos', 'photo', 'signature', 'location'].includes(type) ? 24 : 12
+  return ['textarea', 'checkbox', 'photos', 'photo', 'signature', 'location', 'divisionAddress'].includes(type) ? 24 : 12
 }
 
 function fieldComponent(key) {
@@ -119,6 +120,7 @@ function fieldComponent(key) {
 
 function syncIndustryCode(value) {
   form.economyIndustryCode = value
+  form.isStarIndustryCode = inferStarIndustryFlag(value)
 }
 
 function handleOtaChange(value) {
@@ -133,12 +135,20 @@ async function handleSubmit() {
       ...extractAccommodationPatch(form),
       registeredName: form.registeredName,
       registeredAddress: form.registeredAddress,
+      registeredDivisionAddress: form.registeredDivisionAddress,
       registeredDivisionCode: form.registeredDivisionCode,
+      registeredDivisionProvinceCode: form.registeredDivisionProvinceCode,
+      registeredDivisionCityCode: form.registeredDivisionCityCode,
+      registeredDivisionCountyCode: form.registeredDivisionCountyCode,
+      registeredDivisionStreetCode: form.registeredDivisionStreetCode,
+      registeredDivisionStreetName: form.registeredDivisionStreetName,
       registrationDate: form.registrationDate,
       operatingName: form.operatingName,
       actualAddress: form.actualAddress,
+      actualDivisionAddress: form.actualDivisionAddress,
       divisionCode: form.divisionCode,
       economyIndustryCode: form.economyIndustryCode,
+      isStarIndustryCode: form.isStarIndustryCode,
       stateHolding: form.stateHolding,
       buildingOwnership: form.buildingOwnership,
       businessMode: form.businessMode,
@@ -253,7 +263,9 @@ const AssetPlaceholder = defineComponent({
     return () => {
       if (props.field.type === 'photo') return h('span', null, props.modelValue ? (props.form.businessLicensePhotoName || '已上传图片') : '未上传')
       if (props.field.type === 'photos') return h('span', null, Array.isArray(props.modelValue) && props.modelValue.length ? props.modelValue.map((photo, index) => photo.name || `现场照片${index + 1}.jpg`).join('、') : '未上传')
-      return h('span', null, props.modelValue ? '已签字' : '未签字')
+      return props.modelValue
+        ? h('img', { class: 'signature-image', src: props.modelValue, alt: '住宿单位负责人签字' })
+        : h('span', null, '未签字')
     }
   },
 })
@@ -262,5 +274,16 @@ const AssetPlaceholder = defineComponent({
 <style scoped>
 .module-card {
   margin-bottom: 16px;
+}
+
+.signature-image {
+  display: block;
+  max-width: 360px;
+  width: 100%;
+  max-height: 120px;
+  object-fit: contain;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fff;
 }
 </style>
