@@ -11,7 +11,7 @@ export const useAccommodationStore = defineStore('accommodation', () => {
   const currentDetail = ref(null)
   const filters = ref({
     keyword: '',
-    category: '',
+    areaCodes: ['520000'],
     cityCode: '',
     countyCode: '',
     operatingStatus: '',
@@ -35,14 +35,7 @@ export const useAccommodationStore = defineStore('accommodation', () => {
         if (!item.name.toLowerCase().includes(kw) && !item.creditCode.toLowerCase().includes(kw)) return false
       }
 
-      // 类别过滤
-      if (filters.value.category && item.category !== filters.value.category) return false
-
-      // 市级过滤
-      if (filters.value.cityCode && item.cityCode !== filters.value.cityCode) return false
-
-      // 县级过滤
-      if (filters.value.countyCode && item.countyCode !== filters.value.countyCode) return false
+      if (!matchesAreaCodes(item, filters.value.areaCodes)) return false
 
       // 经营状态过滤
       if (filters.value.operatingStatus && item.operatingStatus !== filters.value.operatingStatus) return false
@@ -130,8 +123,17 @@ export const useAccommodationStore = defineStore('accommodation', () => {
   }
 
   function resetFilters() {
-    filters.value = { keyword: '', category: '', cityCode: '', countyCode: '', operatingStatus: '', starRating: '' }
+    filters.value = { keyword: '', areaCodes: ['520000'], cityCode: '', countyCode: '', operatingStatus: '', starRating: '' }
     pagination.value.page = 1
+  }
+
+  function matchesAreaCodes(item, areaCodes = []) {
+    if (!Array.isArray(areaCodes) || !areaCodes.length || areaCodes.includes('520000')) return true
+    const selectedCities = areaCodes.filter(code => code.length === 6 && code.endsWith('00'))
+    const selectedCounties = areaCodes.filter(code => code.length === 6 && !code.endsWith('00'))
+    if (selectedCities.includes(item.cityCode)) return true
+    if (selectedCounties.includes(item.countyCode)) return true
+    return false
   }
 
   async function logOperation(action, targetId, detail) {

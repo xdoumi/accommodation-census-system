@@ -4,7 +4,7 @@
       <template v-for="field in fields" :key="field.key">
         <!-- 文本输入 -->
         <el-form-item v-if="field.type === 'input'" :label="field.label">
-          <el-input v-model="filterValues[field.key]" :placeholder="'请输入' + field.label" clearable style="width: 180px" />
+          <el-input v-model="filterValues[field.key]" :placeholder="field.placeholder || ('请输入' + field.label)" clearable style="width: 180px" />
         </el-form-item>
 
         <!-- 下拉选择 -->
@@ -17,6 +17,10 @@
         <!-- 区域级联 -->
         <el-form-item v-else-if="field.type === 'cascader'" :label="field.label">
           <AreaCascader v-model="filterValues[field.key]" :level="field.level || 3" style="width: 260px" />
+        </el-form-item>
+
+        <el-form-item v-else-if="field.type === 'area-multi'" :label="field.label">
+          <AreaMultiSelect v-model="filterValues[field.key]" />
         </el-form-item>
       </template>
 
@@ -32,6 +36,7 @@
 import { reactive, watch } from 'vue'
 import { Search, RefreshLeft } from '@element-plus/icons-vue'
 import AreaCascader from './AreaCascader.vue'
+import AreaMultiSelect from './AreaMultiSelect.vue'
 
 const props = defineProps({
   fields: { type: Array, required: true },
@@ -40,10 +45,10 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'search', 'reset'])
 
-const filterValues = reactive({ ...props.modelValue })
+const filterValues = reactive(buildValues(props.modelValue))
 
 watch(() => props.modelValue, (val) => {
-  Object.assign(filterValues, val)
+  Object.assign(filterValues, buildValues(val))
 }, { deep: true })
 
 function handleSearch() {
@@ -53,10 +58,18 @@ function handleSearch() {
 
 function handleReset() {
   for (const field of props.fields) {
-    filterValues[field.key] = ''
+    filterValues[field.key] = field.defaultValue ?? (field.type === 'area-multi' ? [] : '')
   }
   emit('update:modelValue', { ...filterValues })
   emit('reset')
+}
+
+function buildValues(source = {}) {
+  const values = {}
+  props.fields.forEach(field => {
+    values[field.key] = source[field.key] ?? field.defaultValue ?? (field.type === 'area-multi' ? [] : '')
+  })
+  return values
 }
 </script>
 

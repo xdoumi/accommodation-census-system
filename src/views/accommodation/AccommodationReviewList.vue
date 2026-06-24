@@ -16,10 +16,10 @@
     <el-card shadow="never" class="filter-panel">
       <el-form :inline="true" :model="filters">
         <el-form-item label="单位名称">
-          <el-input v-model="filters.keyword" clearable placeholder="搜索单位名称/信用代码/地址" style="width: 240px" @keyup.enter="loadRows" />
+          <el-input v-model="filters.keyword" clearable placeholder="搜索单位名称" style="width: 240px" @keyup.enter="loadRows" />
         </el-form-item>
         <el-form-item label="区域">
-          <AreaCascader v-model="filters.areaCode" style="width: 260px" />
+          <AreaMultiSelect v-model="filters.areaCodes" />
         </el-form-item>
         <el-form-item label="任务状态">
           <el-select v-model="filters.status" clearable placeholder="请选择状态" style="width: 170px">
@@ -101,7 +101,7 @@ import { CENSUS_RECORD_STATUS_OPTIONS } from '@/utils/constants'
 import { buildReviewPatch, canReviewRecord, getReviewStepForRole } from '@/utils/reviewFlow'
 import { COLLECTION_FIELD_MAP, COLLECTION_MODULES, getOptionLabel, getVisibleModuleFields, shouldSkipBusinessModule } from '@/utils/collectionSpec'
 import { archiveCensusRecord, buildDisplayAddress, buildDisplayName, formatCollectionValue, parseRecordFormData, publishRecordToAccommodation } from '@/utils/accommodationWorkflow'
-import AreaCascader from '@/components/common/AreaCascader.vue'
+import AreaMultiSelect from '@/components/common/AreaMultiSelect.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import StatusTag from '@/components/common/StatusTag.vue'
 
@@ -113,7 +113,7 @@ const rows = ref([])
 const activeRow = ref(null)
 const drawerVisible = ref(false)
 const pagination = ref({ page: 1, pageSize: 20, total: 0 })
-const filters = reactive({ keyword: '', areaCode: '', status: '' })
+const filters = reactive({ keyword: '', areaCodes: ['520000'], status: '' })
 const currentReviewStep = computed(() => getReviewStepForRole(authStore.userRole))
 const pendingCount = computed(() => rows.value.filter(row => canCurrentUserReview(row)).length)
 const availableCount = computed(() => rows.value.filter(row => row.status === 'available').length)
@@ -189,21 +189,17 @@ function inReviewScope(row) {
 function matchesFilters(row) {
   if (filters.keyword) {
     const kw = filters.keyword.trim().toLowerCase()
-    const hit = [row.displayName, row.creditCode, row.displayAddress].some(value => String(value || '').toLowerCase().includes(kw))
+    const hit = [row.displayName].some(value => String(value || '').toLowerCase().includes(kw))
     if (!hit) return false
   }
-  if (filters.areaCode) {
-    if (filters.areaCode.endsWith('00')) {
-      if (row.cityCode !== filters.areaCode) return false
-    } else if (row.countyCode !== filters.areaCode) return false
-  }
+  if (!matchesAreaCodes(row, filters.areaCodes)) return false
   if (filters.status && row.status !== filters.status) return false
   return true
 }
 
 function resetFilters() {
   filters.keyword = ''
-  filters.areaCode = ''
+  filters.areaCodes = ['520000']
   filters.status = ''
   pagination.value.page = 1
   loadRows()
@@ -250,6 +246,15 @@ function sourceText(row) {
   if (row.source === 'mobile') return '移动端'
   if (row.source === 'pc') return 'PC端'
   return row._task?.title || '-'
+}
+
+function matchesAreaCodes(row, areaCodes = []) {
+  if (!Array.isArray(areaCodes) || !areaCodes.length || areaCodes.includes('520000')) return true
+  const selectedCities = areaCodes.filter(code => code.length === 6 && code.endsWith('00'))
+  const selectedCounties = areaCodes.filter(code => code.length === 6 && !code.endsWith('00'))
+  if (selectedCities.includes(row.cityCode)) return true
+  if (selectedCounties.includes(row.countyCode)) return true
+  return false
 }
 </script>
 

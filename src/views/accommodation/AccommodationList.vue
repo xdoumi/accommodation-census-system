@@ -55,7 +55,7 @@ import { useAreaStore } from '@/stores/area'
 import { useCensusStore } from '@/stores/census'
 import { ElMessage } from 'element-plus'
 import { exportToExcel } from '@/utils/excel'
-import { CATEGORY_OPTIONS, CENSUS_RECORD_STATUS_OPTIONS, OPERATING_STATUS_OPTIONS } from '@/utils/constants'
+import { CENSUS_RECORD_STATUS_OPTIONS, OPERATING_STATUS_OPTIONS } from '@/utils/constants'
 import { getOptionLabel } from '@/utils/collectionSpec'
 import { inUserScope } from '@/utils/dataScope'
 import { getFullCollectionExportColumns } from '@/utils/accommodationWorkflow'
@@ -85,9 +85,8 @@ const displayPagination = computed(() => ({
 }))
 
 const filterFields = [
-  { key: 'keyword', label: '关键词', type: 'input' },
-  { key: 'category', label: '类别', type: 'select', options: CATEGORY_OPTIONS },
-  { key: 'cityCode', label: '区域', type: 'cascader' },
+  { key: 'keyword', label: '单位名称', type: 'input', placeholder: '请输入单位名称' },
+  { key: 'areaCodes', label: '区域', type: 'area-multi', defaultValue: ['520000'] },
   { key: 'operatingStatus', label: '经营状态', type: 'select', options: OPERATING_STATUS_OPTIONS },
 ]
 
@@ -145,15 +144,12 @@ async function loadAccommodations() {
         const kw = filters.keyword.toLowerCase()
         const hit = [
           item.name,
-          item.creditCode,
-          item.actualAddress,
-          item.detailAddress,
+          item.name,
+          buildAccommodationDisplayRow(item).displayName,
         ].some(value => String(value || '').toLowerCase().includes(kw))
         if (!hit) return false
       }
-      if (filters.category && item.category !== filters.category) return false
-      if (filters.cityCode && item.cityCode !== filters.cityCode) return false
-      if (filters.countyCode && item.countyCode !== filters.countyCode) return false
+      if (!matchesAreaCodes(item, filters.areaCodes)) return false
       if (filters.operatingStatus && item.operatingStatus !== filters.operatingStatus) return false
       return true
     }).toArray()
@@ -226,5 +222,14 @@ function checkTypeText(row) {
 
 function getRecordStatusText(status) {
   return CENSUS_RECORD_STATUS_OPTIONS.find(item => item.value === status)?.label || status || '-'
+}
+
+function matchesAreaCodes(item, areaCodes = []) {
+  if (!Array.isArray(areaCodes) || !areaCodes.length || areaCodes.includes('520000')) return true
+  const selectedCities = areaCodes.filter(code => code.length === 6 && code.endsWith('00'))
+  const selectedCounties = areaCodes.filter(code => code.length === 6 && !code.endsWith('00'))
+  if (selectedCities.includes(item.cityCode)) return true
+  if (selectedCounties.includes(item.countyCode)) return true
+  return false
 }
 </script>
