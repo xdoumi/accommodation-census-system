@@ -98,7 +98,7 @@ import db from '@/db'
 import { useAuthStore } from '@/stores/auth'
 import { useAreaStore } from '@/stores/area'
 import { CENSUS_RECORD_STATUS_OPTIONS } from '@/utils/constants'
-import { buildReviewPatch, canReviewRecord, getReviewStepForRole } from '@/utils/reviewFlow'
+import { buildReviewPatch, canReviewRecord, getReviewStepForRole, isReviewerInScope } from '@/utils/reviewFlow'
 import { COLLECTION_FIELD_MAP, COLLECTION_MODULES, getOptionLabel, getVisibleModuleFields, shouldSkipBusinessModule } from '@/utils/collectionSpec'
 import { archiveCensusRecord, buildDisplayAddress, buildDisplayName, formatCollectionValue, parseRecordFormData, publishRecordToAccommodation } from '@/utils/accommodationWorkflow'
 import AreaMultiSelect from '@/components/common/AreaMultiSelect.vue'
@@ -179,10 +179,7 @@ function decorateRecord(record, assignment, task) {
 }
 
 function inReviewScope(row) {
-  if (['super_admin', 'provincial_admin'].includes(authStore.userRole)) return true
-  const areaCode = row._assignment?.areaCode || row.countyCode || ''
-  if (authStore.userRole === 'county_admin') return areaCode === authStore.userAreaCode
-  if (authStore.userRole === 'city_admin') return areaCode.startsWith(authStore.userAreaCode.substring(0, 4))
+  if (isReviewerInScope(row._assignment, authStore.userRole, authStore.currentUser?.id, authStore.userAreaCode)) return true
   return row.filledBy === authStore.currentUser?.id
 }
 
@@ -216,7 +213,9 @@ function openRecord(row) {
 }
 
 function canCurrentUserReview(row) {
-  return authStore.hasPermission('census:review') && canReviewRecord(row, authStore.userRole)
+  return authStore.hasPermission('census:review')
+    && canReviewRecord(row, authStore.userRole)
+    && isReviewerInScope(row._assignment, authStore.userRole, authStore.currentUser?.id, authStore.userAreaCode)
 }
 
 async function reviewRecord(row, action) {

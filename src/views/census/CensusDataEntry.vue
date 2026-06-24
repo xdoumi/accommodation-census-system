@@ -122,7 +122,7 @@ import {
   shouldSkipBusinessModule,
 } from '@/utils/collectionSpec'
 import StatusTag from '@/components/common/StatusTag.vue'
-import { buildReviewPatch, canReviewRecord, getReviewStepForRole, INITIAL_REVIEW_STATUS } from '@/utils/reviewFlow'
+import { buildReviewPatch, canReviewRecord, getReviewStepForRole, INITIAL_REVIEW_STATUS, isReviewerInScope } from '@/utils/reviewFlow'
 import { useAuthStore } from '@/stores/auth'
 import { publishRecordToAccommodation } from '@/utils/accommodationWorkflow'
 
@@ -265,13 +265,8 @@ function canCurrentUserReview(record) {
 }
 
 function isRecordInReviewScope(record) {
-  const role = authStore.userRole
-  if (['super_admin', 'provincial_admin'].includes(role)) return true
   const assignment = censusStore.assignments.find(item => item.id === record?.assignmentId)
-  const areaCode = assignment?.areaCode || ''
-  if (role === 'county_admin') return areaCode === authStore.userAreaCode
-  if (role === 'city_admin') return areaCode.startsWith(authStore.userAreaCode.substring(0, 4))
-  return false
+  return isReviewerInScope(assignment, authStore.userRole, authStore.currentUser?.id, authStore.userAreaCode)
 }
 
 async function reviewRecord(record, action) {

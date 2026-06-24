@@ -38,7 +38,7 @@
           <el-table :data="store.subTasks" border stripe>
             <el-table-column prop="title" label="子任务名称" min-width="200" show-overflow-tooltip />
             <el-table-column label="分配区域" width="110" align="center">
-              <template #default="{ row }">{{ parseArray(row.assignedAreaCodes).length }}个</template>
+              <template #default="{ row }">{{ countyCountByTask(row) }}个</template>
             </el-table-column>
             <el-table-column label="总任务数" width="100" align="center">
               <template #default="{ row }">{{ subTaskStats(row.id).unitCount }}</template>
@@ -58,11 +58,13 @@
             <el-table-column label="截止日期" width="120" align="center">
               <template #default="{ row }">{{ formatDate(row.deadline) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="180" align="center">
+            <el-table-column label="操作" width="240" align="center">
               <template #default="{ row }">
                 <el-button link type="primary" size="small" @click="router.push(`/census/${row.id}`)">查看</el-button>
+                <el-button link type="primary" size="small" @click="openEditSubTaskDialog(row)" v-if="authStore.hasPermission('census:update')">编辑</el-button>
                 <el-button link type="primary" size="small" @click="openTaskUnits(row)">单位详情</el-button>
                 <el-button link type="success" size="small" @click="store.startTask(row.id); refresh()" v-if="row.status === 'published' && authStore.hasPermission('census:update')">启动</el-button>
+                <el-button link type="danger" size="small" @click="removeSubTask(row)" v-if="row.status !== 'in_progress' && authStore.hasPermission('census:delete')">删除</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -135,7 +137,7 @@
       </template>
     </div>
 
-    <el-dialog v-model="subTaskDialogVisible" title="创建子任务" width="760px">
+    <el-dialog v-model="subTaskDialogVisible" :title="editingSubTaskId ? '编辑子任务' : '创建子任务'" width="760px" @closed="handleSubTaskDialogClosed">
       <el-form ref="subTaskFormRef" :model="subTaskForm" :rules="subTaskRules" label-width="110px">
         <el-form-item label="子任务名称" prop="title">
           <el-input v-model="subTaskForm.title" placeholder="请输入子任务名称" />
@@ -200,7 +202,7 @@
       </el-form>
       <template #footer>
         <el-button @click="subTaskDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submittingSubTask" @click="createSubTask">创建</el-button>
+        <el-button type="primary" :loading="submittingSubTask" @click="submitSubTask">{{ editingSubTaskId ? '保存' : '创建' }}</el-button>
       </template>
     </el-dialog>
 
@@ -231,7 +233,10 @@
     </el-drawer>
 
     <el-drawer v-model="unitDrawerVisible" title="任务单位详情" size="760px">
-      <el-table :data="unitDrawerRows" border stripe>
+      <el-table :data="pagedUnitDrawerRows" border stripe>
+        <el-table-column label="序号" width="70" align="center">
+          <template #default="{ $index }">{{ ($index + 1) + (unitDrawerPagination.page - 1) * unitDrawerPagination.pageSize }}</template>
+        </el-table-column>
         <el-table-column prop="name" label="单位名称" min-width="180" show-overflow-tooltip />
         <el-table-column label="市州" width="120" align="center">
           <template #default="{ row }">{{ areaStore.getAreaName(row.cityCode) || '-' }}</template>
@@ -244,12 +249,24 @@
           <template #default="{ row }">{{ getOptionLabel('checkType', row.checkType) || '-' }}</template>
         </el-table-column>
       </el-table>
+      <div class="drawer-pagination" v-if="unitDrawerPagination.total > 0">
+        <el-pagination
+          v-model:current-page="unitDrawerPagination.page"
+          v-model:page-size="unitDrawerPagination.pageSize"
+          :page-sizes="[10, 20, 50, 100]"
+          :total="unitDrawerPagination.total"
+          layout="total, sizes, prev, pager, next, jumper"
+          background
+          @current-change="handleUnitDrawerPageChange"
+          @size-change="handleUnitDrawerSizeChange"
+        />
+      </div>
     </el-drawer>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useCensusStore } from '@/stores/census'
 import { useAuthStore } from '@/stores/auth'
@@ -257,7 +274,7 @@ import { useAreaStore } from '@/stores/area'
 import { CENSUS_RECORD_STATUS_OPTIONS, CENSUS_TASK_STATUS_OPTIONS } from '@/utils/constants'
 import { formatDate, formatDateTime } from '@/utils/formatters'
 import { COLLECTION_FIELD_MAP, COLLECTION_MODULES, getOptionLabel, getVisibleModuleFields, shouldSkipBusinessModule } from '@/utils/collectionSpec'
-import { buildReviewPatch, canReviewRecord, getReviewStepForRole, submitForCountyReviewPatch } from '@/utils/reviewFlow'
+import { buildReviewPatch, canReviewRecord, getReviewStepForRole, isReviewerInScope, submitForCountyReviewPatch } from '@/utils/reviewFlow'
 import { archiveCensusRecord, publishRecordToAccommodation } from '@/utils/accommodationWorkflow'
 import db from '@/db'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -275,9 +292,11 @@ const activeRecord = ref(null)
 const recordDrawerVisible = ref(false)
 const unitDrawerVisible = ref(false)
 const unitDrawerRows = ref([])
+const unitDrawerPagination = reactive({ page: 1, pageSize: 10, total: 0 })
 const taskUnits = ref([])
 const subTaskDialogVisible = ref(false)
 const submittingSubTask = ref(false)
+const editingSubTaskId = ref(null)
 const subTaskFormRef = ref(null)
 const enumeratorUsers = ref([])
 const cityAdminUsers = ref([])
@@ -321,6 +340,18 @@ const previewGroups = computed(() => COLLECTION_MODULES.filter(m => m.key !== 'P
 }).filter(group => group.items.length > 0))
 
 onMounted(refresh)
+watch(() => route.params.id, () => {
+  recordDrawerVisible.value = false
+  unitDrawerVisible.value = false
+  activeRecord.value = null
+  unitDrawerRows.value = []
+  refresh()
+})
+
+const pagedUnitDrawerRows = computed(() => {
+  const start = (unitDrawerPagination.page - 1) * unitDrawerPagination.pageSize
+  return unitDrawerRows.value.slice(start, start + unitDrawerPagination.pageSize)
+})
 
 async function refresh() {
   await areaStore.fetchAreas()
@@ -340,6 +371,7 @@ async function loadUsers() {
 }
 
 function openSubTaskDialog() {
+  editingSubTaskId.value = null
   subTaskForm.title = `${store.currentTask.title}子任务`
   subTaskForm.deadline = store.currentTask.deadline?.split('T')[0] || ''
   subTaskForm.description = ''
@@ -350,7 +382,19 @@ function openSubTaskDialog() {
   subTaskDialogVisible.value = true
 }
 
-async function createSubTask() {
+function openEditSubTaskDialog(task) {
+  editingSubTaskId.value = task.id
+  subTaskForm.title = task.title || ''
+  subTaskForm.deadline = task.deadline?.split('T')[0] || ''
+  subTaskForm.description = task.description || ''
+  subTaskForm.assignedAreaCodes = parseArray(task.assignedAreaCodes)
+  subTaskForm.responsibleUserIds = parseArray(task.responsibleUserIds)
+  subTaskForm.cityAdminIds = parseArray(task.cityAdminIds)
+  subTaskForm.countyAdminIds = parseArray(task.countyAdminIds)
+  subTaskDialogVisible.value = true
+}
+
+async function submitSubTask() {
   const valid = await subTaskFormRef.value?.validate().catch(() => false)
   if (!valid) return
   submittingSubTask.value = true
@@ -358,7 +402,7 @@ async function createSubTask() {
     const selectedUsers = enumeratorUsers.value.filter(user => subTaskForm.responsibleUserIds.includes(user.id))
     const selectedCityAdmins = cityAdminUsers.value.filter(user => subTaskForm.cityAdminIds.includes(user.id))
     const selectedCountyAdmins = countyAdminUsers.value.filter(user => subTaskForm.countyAdminIds.includes(user.id))
-    await store.createSubTask(store.currentTask.id, {
+    const payload = {
       title: subTaskForm.title,
       description: subTaskForm.description,
       deadline: subTaskForm.deadline,
@@ -369,13 +413,37 @@ async function createSubTask() {
       cityAdminNames: selectedCityAdmins.map(user => user.realName).join('、'),
       countyAdminIds: JSON.stringify(subTaskForm.countyAdminIds),
       countyAdminNames: selectedCountyAdmins.map(user => user.realName).join('、'),
-    })
-    ElMessage.success('子任务已创建')
+    }
+    if (editingSubTaskId.value) {
+      await store.updateSubTask(editingSubTaskId.value, payload)
+      ElMessage.success('子任务已更新')
+    } else {
+      await store.createSubTask(store.currentTask.id, payload)
+      ElMessage.success('子任务已创建')
+    }
     subTaskDialogVisible.value = false
+    editingSubTaskId.value = null
     await refresh()
   } finally {
     submittingSubTask.value = false
   }
+}
+
+async function removeSubTask(task) {
+  try {
+    await ElMessageBox.confirm(`确定删除子任务「${task.title}」吗？删除后不可恢复。`, '确认删除', { type: 'warning' })
+    await store.removeSubTask(task.id)
+    ElMessage.success('子任务已删除')
+    await refresh()
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error(error.message || '删除失败')
+    }
+  }
+}
+
+function handleSubTaskDialogClosed() {
+  editingSubTaskId.value = null
 }
 
 async function loadRecords() {
@@ -414,6 +482,10 @@ function subTaskStats(taskId) {
   }, { unitCount: 0, spotCheckCount: 0, importedCheckCount: 0 })
 }
 
+function countyCountByTask(task) {
+  return expandAssignedCountyCodes(parseArray(task.assignedAreaCodes)).length
+}
+
 async function openTaskUnits(task) {
   const assignments = await db.censusAssignments.where('taskId').equals(Number(task.id)).toArray()
   const ids = new Set()
@@ -424,7 +496,18 @@ async function openTaskUnits(task) {
     if (unit) units.push(unit)
   }
   unitDrawerRows.value = units
+  unitDrawerPagination.page = 1
+  unitDrawerPagination.total = units.length
   unitDrawerVisible.value = true
+}
+
+function handleUnitDrawerPageChange(page) {
+  unitDrawerPagination.page = page
+}
+
+function handleUnitDrawerSizeChange(pageSize) {
+  unitDrawerPagination.page = 1
+  unitDrawerPagination.pageSize = pageSize
 }
 
 function openRecord(row) {
@@ -457,13 +540,8 @@ function canCurrentUserReview(row) {
 }
 
 function isRecordInReviewScope(row) {
-  const role = authStore.userRole
-  if (['super_admin', 'provincial_admin'].includes(role)) return true
   const assignment = store.assignments.find(item => item.id === row.assignmentId)
-  const areaCode = assignment?.areaCode || ''
-  if (role === 'county_admin') return areaCode === authStore.userAreaCode
-  if (role === 'city_admin') return areaCode.startsWith(authStore.userAreaCode.substring(0, 4))
-  return false
+  return isReviewerInScope(assignment, authStore.userRole, authStore.currentUser?.id, authStore.userAreaCode)
 }
 
 async function reviewRecord(row, action) {
@@ -480,6 +558,30 @@ async function reviewRecord(row, action) {
 
 function parseArray(raw) {
   try { return Array.isArray(raw) ? raw : JSON.parse(raw || '[]') } catch { return [] }
+}
+
+function expandAssignedCountyCodes(areaCodes = []) {
+  const selected = Array.isArray(areaCodes) ? areaCodes : []
+  const countySet = new Set()
+  const allCounties = areaStore.areas.filter(item => item.level === 3)
+  if (!selected.length || selected.includes('520000')) {
+    allCounties.forEach(item => countySet.add(item.code))
+    return [...countySet]
+  }
+  selected.forEach(code => {
+    const area = areaStore.getAreaByCode(code)
+    if (!area) return
+    if (area.level === 1 || code === '520000') {
+      allCounties.forEach(item => countySet.add(item.code))
+      return
+    }
+    if (area.level === 2 || code.endsWith('00')) {
+      areaStore.getCountiesByCity(code).forEach(item => countySet.add(item.code))
+      return
+    }
+    countySet.add(code)
+  })
+  return [...countySet]
 }
 
 function areaNames(codes) {
@@ -558,5 +660,11 @@ function exportRecords() {
   border: 1px solid #e5e7eb;
   border-radius: 6px;
   background: #fff;
+}
+
+.drawer-pagination {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
 }
 </style>

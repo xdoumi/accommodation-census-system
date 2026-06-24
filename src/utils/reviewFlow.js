@@ -69,6 +69,28 @@ export function canReviewRecord(record, role) {
   return step.pending.includes(normalizeRecordStatus(record.status))
 }
 
+function parseIdArray(raw) {
+  try { return Array.isArray(raw) ? raw : JSON.parse(raw || '[]') } catch { return [] }
+}
+
+export function isReviewerInScope(assignment, role, userId, userAreaCode) {
+  if (['super_admin', 'provincial_admin'].includes(role)) return true
+  if (!assignment) return false
+
+  const areaCode = String(assignment.areaCode || '')
+  if (role === 'county_admin') {
+    if (parseIdArray(assignment.countyAdminIds).includes(userId)) return true
+    return areaCode === userAreaCode
+  }
+
+  if (role === 'city_admin') {
+    if (parseIdArray(assignment.cityAdminIds).includes(userId)) return true
+    return areaCode.startsWith(String(userAreaCode || '').substring(0, 4))
+  }
+
+  return false
+}
+
 export function buildReviewPatch(record, role, action, userId) {
   const step = getReviewStepForRole(role)
   if (!step) throw new Error('当前角色无审核权限')

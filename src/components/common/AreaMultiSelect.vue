@@ -16,14 +16,13 @@
     <div class="area-panel">
       <div class="area-actions">
         <el-button size="small" type="primary" plain @click="selectProvince">全选贵州省</el-button>
-        <el-button size="small" @click="clearSelection">清空</el-button>
       </div>
       <el-tree
         ref="treeRef"
         :data="treeData"
         node-key="code"
         show-checkbox
-        default-expand-all
+        :default-expanded-keys="defaultExpandedKeys"
         :props="{ label: 'name', children: 'children' }"
         :check-strictly="false"
         :default-checked-keys="selectedCodes"
@@ -53,6 +52,7 @@ const treeData = computed(() => areaStore.areaTree)
 const cityCodes = computed(() => areaStore.areas.filter(area => area.level === 2).map(area => area.code))
 const countyCodes = computed(() => areaStore.areas.filter(area => area.level === 3).map(area => area.code))
 const allSelectableCodes = computed(() => ['520000', ...cityCodes.value, ...countyCodes.value])
+const defaultExpandedKeys = computed(() => ['520000'])
 
 const displayText = computed(() => {
   if (!selectedCodes.value.length || selectedCodes.value.includes('520000')) return '贵州省（全部）'
@@ -92,13 +92,6 @@ function selectProvince() {
   treeRef.value?.setCheckedKeys(selectedCodes.value)
   emit('update:modelValue', selectedCodes.value)
   emit('change', selectedCodes.value)
-}
-
-function clearSelection() {
-  selectedCodes.value = []
-  treeRef.value?.setCheckedKeys([])
-  emit('update:modelValue', [])
-  emit('change', [])
 }
 
 function normalizeCodes(keys = []) {
