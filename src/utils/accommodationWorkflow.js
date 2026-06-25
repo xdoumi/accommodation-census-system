@@ -47,7 +47,7 @@ export function getFullCollectionExportColumns(areaName = code => code) {
     { key: 'displayAddress', title: '实际经营地址', width: 32 },
     { key: 'displaySource', title: '来源', width: 16 },
     { key: 'displayCheckType', title: '核查类型', width: 18 },
-    { key: 'displayReviewStatus', title: '状态', width: 16 },
+    { key: 'displayDataUpdatedAt', title: '数据更新日期', width: 20 },
   ]
   const fieldColumns = COLLECTION_MODULES
     .filter(module => module.key !== 'PREVIEW')
@@ -71,6 +71,7 @@ export async function publishRecordToAccommodation(record) {
   const normalizedPatch = {
     ...patch,
     creditCode: patch.creditCode || undefined,
+    dataUpdatedAt: record.provinceReviewedAt || record.reviewedAt || now,
     updatedAt: now,
   }
 

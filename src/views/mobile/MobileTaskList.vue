@@ -3,7 +3,7 @@
     <div class="task-summary m-card">
       <div>
         <div class="summary-kicker">我的子任务</div>
-        <div class="summary-title">{{ filteredAssignments.length }} 个待处理分配</div>
+        <div class="summary-title">{{ filteredTasks.length }} 个待处理子任务</div>
       </div>
       <div class="summary-progress">{{ executionProgress }}%</div>
     </div>
@@ -22,33 +22,33 @@
     </div>
 
     <div class="task-list">
-      <div v-if="filteredAssignments.length === 0" class="empty-state">
+      <div v-if="filteredTasks.length === 0" class="empty-state">
         <el-icon :size="48" color="#dcdfe6"><Document /></el-icon>
         <p>暂无子任务</p>
       </div>
 
       <div
-        v-for="item in filteredAssignments"
-        :key="item.id"
+        v-for="item in filteredTasks"
+        :key="item.taskId"
         class="m-card assignment-card"
-        @click="startEntry(item)"
+        @click="openTask(item)"
       >
         <div class="card-head">
           <div>
             <div class="task-title">{{ item.taskTitle }}</div>
-            <div class="task-meta">{{ item.areaName || item.areaCode }} · {{ item.assignedToName || '待分配' }}</div>
+            <div class="task-meta">{{ item.areaSummary }} · {{ item.assignedToName || '待分配' }}</div>
           </div>
-          <StatusTag :value="item.status" :options="CENSUS_ASSIGNMENT_STATUS_OPTIONS" />
+          <StatusTag :value="item.displayStatus" :options="CENSUS_ASSIGNMENT_STATUS_OPTIONS" />
         </div>
         <div class="metric-grid">
-          <div><strong>{{ item.unitCount || 0 }}</strong><span>总任务数</span></div>
-          <div><strong>{{ item.spotCheckCount || 0 }}</strong><span>抽查</span></div>
-          <div><strong>{{ item.importedCheckCount || 0 }}</strong><span>核查</span></div>
+          <div><strong>{{ item.unitCount || 0 }}</strong><span>单位数量</span></div>
+          <div><strong>{{ item.spotCheckCount || 0 }}</strong><span>抽查数量</span></div>
+          <div><strong>{{ item.importedCheckCount || 0 }}</strong><span>核查数量</span></div>
         </div>
         <el-progress :percentage="item.progress || 0" :stroke-width="8" :show-text="false" />
         <div class="card-foot">
           <span>截止：{{ formatDate(item.deadline) || '-' }}</span>
-          <el-button type="primary" size="small" @click.stop="startEntry(item)">开始填报</el-button>
+          <el-button type="primary" size="small" @click.stop="openTask(item)">查看单位</el-button>
         </div>
       </div>
     </div>
@@ -76,25 +76,57 @@ const filterTabs = [
   { label: '已提交', value: 'submitted' },
 ]
 
-const assignments = computed(() => censusStore.assignments.map(item => {
-  const task = taskById.value.get(item.taskId) || {}
-  return {
-    ...item,
-    taskTitle: task.title || item.areaName || '子任务',
-    deadline: task.deadline,
-    startDate: task.startDate,
-  }
-}))
+const groupedTasks = computed(() => {
+  const grouped = new Map()
+  censusStore.assignments.forEach(item => {
+    const task = taskById.value.get(item.taskId) || {}
+    const key = item.taskId
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        taskId: item.taskId,
+        taskTitle: task.title || item.areaName || '子任务',
+        deadline: task.deadline,
+        startDate: task.startDate,
+        assignedToName: item.assignedToName,
+        areaNames: [],
+        statuses: [],
+        progressTotal: 0,
+        assignmentCount: 0,
+        unitCount: 0,
+        spotCheckCount: 0,
+        importedCheckCount: 0,
+      })
+    }
+    const current = grouped.get(key)
+    current.areaNames.push(item.areaName || item.areaCode)
+    current.statuses.push(item.status)
+    current.progressTotal += Number(item.progress || 0)
+    current.assignmentCount += 1
+    current.unitCount += Number(item.unitCount || 0)
+    current.spotCheckCount += Number(item.spotCheckCount || 0)
+    current.importedCheckCount += Number(item.importedCheckCount || 0)
+  })
 
-const filteredAssignments = computed(() => {
-  const list = assignments.value.filter(item => item.status !== 'draft')
-  if (activeFilter.value === 'all') return list
-  return list.filter(item => item.status === activeFilter.value)
+  return Array.from(grouped.values()).map(item => {
+    const uniqueAreas = [...new Set(item.areaNames)]
+    const progress = item.assignmentCount ? Math.round(item.progressTotal / item.assignmentCount) : 0
+    return {
+      ...item,
+      areaSummary: uniqueAreas.length > 1 ? `${uniqueAreas.slice(0, 2).join('、')}等${uniqueAreas.length}个区域` : (uniqueAreas[0] || '未分配区域'),
+      progress,
+      displayStatus: deriveTaskStatus(item.statuses, progress),
+    }
+  })
+})
+
+const filteredTasks = computed(() => {
+  if (activeFilter.value === 'all') return groupedTasks.value
+  return groupedTasks.value.filter(item => item.displayStatus === activeFilter.value)
 })
 
 const executionProgress = computed(() => {
-  if (!assignments.value.length) return 0
-  return Math.round(assignments.value.reduce((sum, item) => sum + Number(item.progress || 0), 0) / assignments.value.length)
+  if (!groupedTasks.value.length) return 0
+  return Math.round(groupedTasks.value.reduce((sum, item) => sum + Number(item.progress || 0), 0) / groupedTasks.value.length)
 })
 
 onMounted(async () => {
@@ -103,8 +135,16 @@ onMounted(async () => {
   taskById.value = new Map(tasks.map(task => [task.id, task]))
 })
 
-function startEntry(item) {
-  router.push(`/m/entry/${item.taskId}/${item.id}`)
+function deriveTaskStatus(statuses = [], progress = 0) {
+  if (!statuses.length) return 'pending'
+  if (statuses.every(status => status === 'submitted')) return 'submitted'
+  if (statuses.some(status => status === 'submitted') || progress >= 100) return 'submitted'
+  if (statuses.some(status => status === 'in_progress') || progress > 0) return 'in_progress'
+  return 'pending'
+}
+
+function openTask(item) {
+  router.push(`/m/tasks/${item.taskId}`)
 }
 </script>
 

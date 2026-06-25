@@ -34,8 +34,6 @@
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="router.push(`/census/${row.id}`)">查看</el-button>
             <el-button link type="primary" size="small" @click="router.push(`/census/${row.id}/edit`)" v-if="row.status === 'draft' && authStore.hasPermission('census:update')">编辑</el-button>
-            <el-button link type="success" size="small" @click="handlePublish(row)" v-if="row.status === 'draft' && authStore.hasPermission('census:create')">发布</el-button>
-            <el-button link type="success" size="small" @click="handleComplete(row)" v-if="row.status === 'in_progress' && authStore.hasPermission('census:update')">完成</el-button>
             <el-button link type="danger" size="small" @click="handleDelete(row)" v-if="row.status === 'draft' && authStore.hasPermission('census:delete')">删除</el-button>
           </template>
         </el-table-column>
@@ -85,27 +83,6 @@ function formatScope(row) {
   let codes = []
   try { codes = JSON.parse(row.scopeAreaCodes || row.assignedAreaCodes || '[]') } catch {}
   return codes.map(code => areaStore.getAreaName(code)).join('、') || '-'
-}
-
-async function handlePublish(task) {
-  try {
-    await ElMessageBox.confirm(`确定发布主任务「${task.title}」吗？发布后可在任务详情中继续创建子任务。`, '确认发布', { type: 'warning' })
-    await store.publishTask(task.id)
-    await store.startTask(task.id)
-    ElMessage.success('任务已发布')
-    await store.fetchTasks()
-    await loadSubTaskCounts()
-  } catch { /* 取消 */ }
-}
-
-async function handleComplete(task) {
-  try {
-    await ElMessageBox.confirm(`确定将任务「${task.title}」标记为已完成吗？`, '确认完成', { type: 'warning' })
-    await store.completeTask(task.id)
-    ElMessage.success('任务已完成')
-    await store.fetchTasks()
-    await loadSubTaskCounts()
-  } catch { /* 取消 */ }
 }
 
 async function handleDelete(task) {

@@ -8,6 +8,18 @@
     </el-page-header>
 
     <div v-if="detail" style="margin-top: 20px;">
+      <el-card shadow="never" class="module-card">
+        <template #header>
+          <span>基础信息</span>
+        </template>
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="单位名称">{{ detail.name || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="数据更新日期">{{ formatDateTime(detail.dataUpdatedAt || detail.updatedAt) || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="市州">{{ areaStore.getAreaName(detail.cityCode) || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="区县">{{ areaStore.getAreaName(detail.countyCode) || '-' }}</el-descriptions-item>
+        </el-descriptions>
+      </el-card>
+
       <el-card
         v-for="module in modules"
         :key="module.key"
@@ -39,6 +51,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAccommodationStore } from '@/stores/accommodation'
 import { useAreaStore } from '@/stores/area'
 import CategoryTag from '@/components/common/CategoryTag.vue'
+import { formatDateTime } from '@/utils/formatters'
 import {
   COLLECTION_FIELD_MAP,
   COLLECTION_MODULES,

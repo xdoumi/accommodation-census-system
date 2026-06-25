@@ -40,13 +40,13 @@
             <el-table-column label="分配区域" width="110" align="center">
               <template #default="{ row }">{{ countyCountByTask(row) }}个</template>
             </el-table-column>
-            <el-table-column label="总任务数" width="100" align="center">
+            <el-table-column label="单位数量" width="100" align="center">
               <template #default="{ row }">{{ subTaskStats(row.id).unitCount }}</template>
             </el-table-column>
-            <el-table-column label="抽查任务数" width="110" align="center">
+            <el-table-column label="抽查数量" width="110" align="center">
               <template #default="{ row }">{{ subTaskStats(row.id).spotCheckCount }}</template>
             </el-table-column>
-            <el-table-column label="核查任务数" width="110" align="center">
+            <el-table-column label="核查数量" width="110" align="center">
               <template #default="{ row }">{{ subTaskStats(row.id).importedCheckCount }}</template>
             </el-table-column>
             <el-table-column prop="responsibleUserNames" label="责任人" min-width="180" show-overflow-tooltip />
@@ -88,6 +88,9 @@
             <el-table-column prop="detailAddress" label="地址" min-width="240" show-overflow-tooltip />
             <el-table-column label="核查类型" width="130" align="center">
               <template #default="{ row }">{{ getOptionLabel('checkType', row.checkType) || '-' }}</template>
+            </el-table-column>
+            <el-table-column label="来源" width="180" align="center" show-overflow-tooltip>
+              <template #default="{ row }">{{ getOptionLabel('catalogSource', row.catalogSource) || '-' }}</template>
             </el-table-column>
           </el-table>
         </el-card>
@@ -247,6 +250,9 @@
         <el-table-column prop="detailAddress" label="地址" min-width="240" show-overflow-tooltip />
         <el-table-column label="核查类型" width="130" align="center">
           <template #default="{ row }">{{ getOptionLabel('checkType', row.checkType) || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="来源" width="180" align="center" show-overflow-tooltip>
+          <template #default="{ row }">{{ getOptionLabel('catalogSource', row.catalogSource) || '-' }}</template>
         </el-table-column>
       </el-table>
       <div class="drawer-pagination" v-if="unitDrawerPagination.total > 0">

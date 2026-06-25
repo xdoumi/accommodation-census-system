@@ -55,6 +55,7 @@
         <el-table-column label="状态" width="130" align="center">
           <template #default="{ row }"><StatusTag :value="row.status" :options="CENSUS_RECORD_STATUS_OPTIONS" /></template>
         </el-table-column>
+        <el-table-column prop="status" label="状态值" width="180" align="center" show-overflow-tooltip />
         <el-table-column label="操作" width="260" align="center" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="openRecord(row)">查看</el-button>
@@ -73,6 +74,7 @@
           <el-descriptions-item label="市州">{{ areaStore.getAreaName(activeRow.cityCode) || '-' }}</el-descriptions-item>
           <el-descriptions-item label="区县">{{ areaStore.getAreaName(activeRow.countyCode) || '-' }}</el-descriptions-item>
           <el-descriptions-item label="状态"><StatusTag :value="activeRow.status" :options="CENSUS_RECORD_STATUS_OPTIONS" /></el-descriptions-item>
+          <el-descriptions-item label="状态值">{{ activeRow.status || '-' }}</el-descriptions-item>
           <el-descriptions-item label="提交来源">{{ sourceText(activeRow) }}</el-descriptions-item>
         </el-descriptions>
 

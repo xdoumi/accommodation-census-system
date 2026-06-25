@@ -141,7 +141,6 @@
           code-label="区划代码（12位）"
           code-code="B9"
           prefix="registeredDivision"
-          infer-button-label="按注册地址识别"
           :form="form"
           :errors="errors"
           :disabled="readOnly"
@@ -167,7 +166,6 @@
           code-label="实际经营区划代码（12位）"
           code-code="C5"
           prefix="division"
-          infer-button-label="按实际经营地址识别"
           :form="form"
           :errors="errors"
           :disabled="readOnly"
@@ -293,7 +291,7 @@ import { useCensusStore } from '@/stores/census'
 import { useAreaStore } from '@/stores/area'
 import { useOfflineQueue } from '@/composables/useOfflineQueue'
 import db from '@/db'
-import { buildDivisionCode, getStreetOptions, GUIZHOU_PROVINCE_CODE, GUIZHOU_PROVINCE_NAME, inferDivisionFromAddress, splitDivisionCode } from '@/utils/divisionHelper'
+import { buildDivisionCode, getStreetOptions, GUIZHOU_PROVINCE_CODE, GUIZHOU_PROVINCE_NAME, splitDivisionCode } from '@/utils/divisionHelper'
 import { buildMobileSubmitContextKey, saveMobileSubmitContext } from '@/utils/mobileSubmitContext'
 import { INITIAL_REVIEW_STATUS } from '@/utils/reviewFlow'
 
@@ -378,6 +376,7 @@ onMounted(async () => {
   await censusStore.fetchTaskDetail(route.params.taskId)
   await loadUnits()
   if (editingRecordId.value) await restoreRecord(editingRecordId.value)
+  else await applyInitialRouteSelection()
   if (!form.location) captureLocation(false)
   await nextTick()
   handleScrollActiveModule()
@@ -430,11 +429,32 @@ async function loadUnits() {
   units.value = (await db.accommodations.toArray()).filter(item => !item.deletedAt)
 }
 
+async function applyInitialRouteSelection() {
+  const unitId = Number(route.query.unitId || 0)
+  const unitName = String(route.query.unitName || '').trim()
+  if (unitId) {
+    const unit = units.value.find(item => Number(item.id) === unitId)
+    if (unit) {
+      applySelectedUnit(unit, { silent: true, restoreDraft: true })
+      return
+    }
+  }
+  if (unitName) {
+    form.unitName = unitName
+    if (!form.operatingName) form.operatingName = unitName
+  }
+}
+
 function parseArray(raw) {
   try { return Array.isArray(raw) ? raw : JSON.parse(raw || '[]') } catch { return [] }
 }
 
 function selectUnit(unit) {
+  applySelectedUnit(unit, { silent: false, restoreDraft: true })
+  showUnitPicker.value = false
+}
+
+function applySelectedUnit(unit, { silent = false, restoreDraft = true } = {}) {
   const currentForm = { ...form }
   const unitForm = buildCollectionFormFromUnit(unit)
   selectedUnit.value = unit
@@ -442,14 +462,13 @@ function selectUnit(unit) {
   Object.assign(form, unitForm)
   clearOcrBusinessFields()
   fillMissingFormValues(form, currentForm)
-  const restored = restoreLocalDraft()
+  const restored = restoreDraft ? restoreLocalDraft() : false
   if (restored) {
     fillMissingFormValues(form, unitForm)
-    ElMessage.success('已恢复该单位草稿，并补全名录已有字段')
-  } else {
+    if (!silent) ElMessage.success('已恢复该单位草稿，并补全名录已有字段')
+  } else if (!silent) {
     ElMessage.success('已回写名录已有字段')
   }
-  showUnitPicker.value = false
 }
 
 function clearOcrBusinessFields() {
@@ -975,7 +994,6 @@ const DivisionCodePicker = defineComponent({
     codeFieldKey: { type: String, required: true },
     codeLabel: { type: String, required: true },
     codeCode: { type: String, required: true },
-    inferButtonLabel: { type: String, default: '按地址识别' },
     form: { type: Object, required: true },
     errors: { type: Object, required: true },
     disabled: { type: Boolean, default: false },
@@ -1037,16 +1055,6 @@ const DivisionCodePicker = defineComponent({
     }, { immediate: true })
 
     watch(divisionAddress, syncDivisionAddress)
-
-    function applyAddress(address) {
-      const inferred = inferDivisionFromAddress(address, props.areas)
-      props.form[provinceKey.value] = inferred.provinceCode
-      props.form[cityKey.value] = inferred.cityCode
-      props.form[countyKey.value] = inferred.countyCode
-      props.form[streetCodeKey.value] = inferred.streetCode || props.form[streetCodeKey.value] || ''
-      props.form[streetNameKey.value] = inferred.streetName || props.form[streetNameKey.value]
-      generate()
-    }
 
     function openPicker() {
       if (props.disabled) return
@@ -1156,9 +1164,6 @@ const DivisionCodePicker = defineComponent({
 
     return () => h('div', { class: 'm-form-group division-picker', 'data-field-key': divisionAddressKey.value }, [
       h('div', { class: 'm-form-label' }, [h('span', { class: 'required' }, '*'), `${props.addressCode} ${props.addressLabel}`]),
-      h('div', { class: 'division-actions' }, [
-        h('button', { type: 'button', disabled: props.disabled || !props.form[props.addressFieldKey], onClick: () => applyAddress(props.form[props.addressFieldKey]) }, props.inferButtonLabel),
-      ]),
       h('button', {
         type: 'button',
         class: ['division-select-card', { 'has-error': props.errors[divisionAddressKey.value] }],
@@ -1168,16 +1173,6 @@ const DivisionCodePicker = defineComponent({
         h('span', { class: ['division-select-text', { placeholder: !props.form[divisionAddressKey.value] }] }, props.form[divisionAddressKey.value] || '请选择省 / 市州 / 区县 / 街道'),
         h('span', { class: 'division-select-arrow' }, '›'),
       ]),
-      h('input', {
-        class: 'm-input street-input',
-        value: props.form[streetNameKey.value],
-        disabled: props.disabled || !props.form[countyKey.value],
-        placeholder: '可修改街道/乡镇名称',
-        onInput: event => {
-          props.form[streetNameKey.value] = event.target.value
-          generate()
-        },
-      }),
       h('div', { class: 'm-form-label division-code-label' }, [h('span', { class: 'required' }, '*'), `${props.codeCode} ${props.codeLabel}`]),
       h('div', { class: 'division-code-row', 'data-field-key': props.codeFieldKey }, [
         h('input', {
@@ -1982,10 +1977,6 @@ const MultiPhotoPicker = defineComponent({
     background: #f3f6fb;
     font-size: 24px;
     line-height: 1;
-  }
-
-  .street-input {
-    margin-top: 10px;
   }
 
   .division-code-row {

@@ -30,12 +30,6 @@
         <el-table-column label="核查类型" width="130" align="center">
           <template #default="{ row }">{{ checkTypeText(row) || '-' }}</template>
         </el-table-column>
-        <el-table-column label="状态" width="120" align="center">
-          <template #default="{ row }">
-            <StatusTag v-if="row._latestRecord" :value="row._latestRecord.status" :options="CENSUS_RECORD_STATUS_OPTIONS" />
-            <el-tag v-else size="small" type="info">未填报</el-tag>
-          </template>
-        </el-table-column>
         <el-table-column label="操作" width="180" align="center" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="handleView(row)">查看</el-button>
@@ -55,14 +49,13 @@ import { useAreaStore } from '@/stores/area'
 import { useCensusStore } from '@/stores/census'
 import { ElMessage } from 'element-plus'
 import { exportToExcel } from '@/utils/excel'
-import { CENSUS_RECORD_STATUS_OPTIONS, OPERATING_STATUS_OPTIONS } from '@/utils/constants'
+import { OPERATING_STATUS_OPTIONS } from '@/utils/constants'
 import { getOptionLabel } from '@/utils/collectionSpec'
 import { inUserScope } from '@/utils/dataScope'
 import { getFullCollectionExportColumns } from '@/utils/accommodationWorkflow'
 import db from '@/db'
 import SearchFilterBar from '@/components/common/SearchFilterBar.vue'
 import DataTable from '@/components/common/DataTable.vue'
-import StatusTag from '@/components/common/StatusTag.vue'
 
 const router = useRouter()
 const store = useAccommodationStore()
@@ -122,7 +115,7 @@ async function handleExport() {
     displayStatus: actualStatusText(row) || '-',
     displaySource: sourceText(row),
     displayCheckType: checkTypeText(row) || '-',
-    displayReviewStatus: row._latestRecord ? getRecordStatusText(row._latestRecord.status) : '已入库',
+    displayDataUpdatedAt: row.dataUpdatedAt || row.updatedAt || '',
   }))
   exportToExcel(rows, getFullCollectionExportColumns(code => areaStore.getAreaName(code)), '住宿单位完整数据')
   ElMessage.success('导出成功')
@@ -185,7 +178,7 @@ function latestRecordFor(row) {
 
 function buildAccommodationDisplayRow(row) {
   const record = latestRecordFor(row)
-  const formData = parseFormData(record)
+  const formData = { ...buildCollectionFormFromUnit(row), ...parseFormData(record) }
   return {
     ...row,
     _latestRecord: record,
@@ -206,22 +199,15 @@ function actualStatusText(row) {
 }
 
 function sourceText(row) {
-  const value = row._formData.catalogSource || row._latestRecord?.catalogSource || row.catalogSource
+  const value = row.catalogSource || row._formData.catalogSource
   const label = getOptionLabel('catalogSource', value)
   if (label) return label
-  if (row._latestRecord?.source === 'mobile') return '移动端'
-  if (row._latestRecord?.source === 'pc') return 'PC端'
-  if (row.taskTitle) return row.taskTitle
   return '名录'
 }
 
 function checkTypeText(row) {
   const value = row._formData.checkType || row._latestRecord?.checkType || row.checkType
   return getOptionLabel('checkType', value)
-}
-
-function getRecordStatusText(status) {
-  return CENSUS_RECORD_STATUS_OPTIONS.find(item => item.value === status)?.label || status || '-'
 }
 
 function matchesAreaCodes(item, areaCodes = []) {

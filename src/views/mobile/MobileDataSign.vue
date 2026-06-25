@@ -86,7 +86,7 @@ async function submitReview() {
       try { localStorage.removeItem(context.value.draftKey) } catch { /* ignore */ }
     }
     ElMessage.success(`提交成功，记录号 ${recordId}`)
-    router.push('/m/tasks')
+    router.push(`/m/tasks/${context.value.taskId}`)
   } catch (err) {
     ElMessage.error('提交失败：' + (err.message || err))
   } finally {

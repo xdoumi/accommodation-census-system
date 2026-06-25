@@ -1,193 +1,266 @@
 <template>
   <div style="padding-bottom: 16px;" v-loading="loading">
     <template v-if="task">
-      <!-- 任务信息卡 -->
-      <div class="m-card" style="border-radius: 0 0 16px 16px; margin-top: 0;">
-        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-          <h3 style="margin: 0; font-size: 17px; flex: 1;">{{ task.title }}</h3>
+      <div class="m-card task-hero" style="border-radius: 0 0 16px 16px; margin-top: 0;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
+          <div style="min-width: 0; flex: 1;">
+            <h3 style="margin: 0; font-size: 17px; line-height: 1.4;">{{ task.title }}</h3>
+            <p style="color: #909399; font-size: 13px; margin-top: 8px; line-height: 1.5;">{{ task.description }}</p>
+          </div>
           <StatusTag :value="task.status" :options="CENSUS_TASK_STATUS_OPTIONS" style="flex-shrink: 0;" />
         </div>
-        <p style="color: #909399; font-size: 13px; margin-top: 8px; line-height: 1.5;">{{ task.description }}</p>
-        <div style="display: flex; gap: 16px; margin-top: 12px; font-size: 13px; color: #909399;">
+        <div class="task-meta-line">
           <span><el-icon><Calendar /></el-icon> 截止：{{ formatDate(task.deadline) }}</span>
+          <span>单位 {{ taskUnits.length }} 个</span>
         </div>
       </div>
 
-      <!-- 分配区域列表 -->
       <div class="m-card">
-        <div style="font-size: 15px; font-weight: 600; margin-bottom: 12px;">
-          填报区域（{{ censusStore.assignments.length }}个）
+        <div class="search-header">
+          <input v-model.trim="keyword" class="m-input" placeholder="搜索单位名称" />
+          <el-button
+            v-if="showAddButton"
+            type="primary"
+            size="small"
+            @click="handleCreateUnit"
+          >
+            新增
+          </el-button>
         </div>
 
-        <div v-for="assignment in censusStore.assignments" :key="assignment.id"
-          class="assignment-item" @click="handleStartEntry(assignment)">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div>
-              <div style="font-size: 15px; font-weight: 500;">{{ assignment.areaName || assignment.areaCode }}</div>
-              <div style="font-size: 12px; color: #909399; margin-top: 4px;">
-                {{ assignment.assignedToName || '待分配' }}
-              </div>
-            </div>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <el-progress type="circle" :percentage="assignment.progress" :width="40"
-                :stroke-width="4" :color="assignment.progress === 100 ? '#67c23a' : '#1a5fc5'" />
-              <el-icon color="#c0c4cc"><ArrowRight /></el-icon>
-            </div>
-          </div>
+        <div v-if="filteredUnits.length === 0" class="empty-panel">
+          <el-icon :size="48" color="#dcdfe6"><OfficeBuilding /></el-icon>
+          <p>{{ keyword ? '当前任务名单中没有这个单位' : '当前任务暂无单位' }}</p>
         </div>
 
-        <div v-if="censusStore.assignments.length === 0" style="text-align: center; color: #909399; padding: 20px;">
-          暂无分配区域
-        </div>
-      </div>
-
-      <!-- 已填单位清单 -->
-      <div class="m-card">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-          <span style="font-size: 15px; font-weight: 600;">已填单位清单</span>
-          <el-button link type="primary" size="small" @click="loadRecords">刷新</el-button>
-        </div>
-        <div v-if="records.length === 0" style="text-align: center; color: #909399; padding: 18px 0;">
-          暂无草稿或提交记录
-        </div>
-        <div v-for="record in records" :key="record.id" class="record-item">
-          <div style="display: flex; justify-content: space-between; gap: 10px;">
+        <div
+          v-for="item in filteredUnits"
+          :key="item.id"
+          class="unit-card"
+          @click="openUnit(item)"
+        >
+          <div class="unit-card-head">
             <div style="min-width: 0; flex: 1;">
-              <div class="record-title">{{ record.unitName || '未命名单位' }}</div>
-              <div class="record-meta">{{ record.creditCode || '无信用代码' }} · {{ recordAssignmentName(record.assignmentId) }}</div>
-              <div class="record-meta">更新：{{ formatDateTime(record.updatedAt || record.createdAt) }}</div>
+              <div class="unit-name">{{ item.name }}</div>
+              <div class="unit-address">{{ item.detailAddress || '暂无地址' }}</div>
             </div>
-            <StatusTag :value="record.status" :options="CENSUS_RECORD_STATUS_OPTIONS" style="flex-shrink: 0;" />
+            <StatusTag
+              :value="item.recordStatus || 'draft_placeholder'"
+              :options="statusOptions"
+              style="flex-shrink: 0;"
+            />
           </div>
-          <div class="record-actions">
-            <el-button v-if="canEditRecord(record)" link type="primary" size="small" @click.stop="editRecord(record)">修改</el-button>
-            <el-button v-if="record.status === 'draft'" link type="success" size="small" @click.stop="submitRecord(record)">提交审核</el-button>
-            <el-button v-if="canEditRecord(record)" link type="danger" size="small" @click.stop="deleteRecord(record)">删除</el-button>
+          <div class="unit-grid">
+            <div><span>来源</span>{{ sourceText(item) }}</div>
+            <div><span>核查类型</span>{{ getOptionLabel('checkType', item.checkType) || '-' }}</div>
+            <div><span>信用代码</span>{{ item.creditCode || '-' }}</div>
+            <div><span>当前状态</span>{{ item.recordStatusLabel }}</div>
           </div>
         </div>
-      </div>
-
-      <!-- 底部操作 -->
-      <div v-if="['published', 'in_progress'].includes(task.status)" style="padding: 0 12px;">
-        <el-button type="primary" class="m-btn" style="width: 100%;" @click="handleStartEntry(censusStore.assignments[0])">
-          开始填报
-        </el-button>
       </div>
     </template>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
 import { useCensusStore } from '@/stores/census'
+import { useAuthStore } from '@/stores/auth'
 import { CENSUS_RECORD_STATUS_OPTIONS, CENSUS_TASK_STATUS_OPTIONS } from '@/utils/constants'
-import { formatDate, formatDateTime } from '@/utils/formatters'
+import { formatDate } from '@/utils/formatters'
+import { getOptionLabel } from '@/utils/collectionSpec'
 import StatusTag from '@/components/common/StatusTag.vue'
 import db from '@/db'
-import { submitForCountyReviewPatch } from '@/utils/reviewFlow'
-import { archiveCensusRecord } from '@/utils/accommodationWorkflow'
 
 const route = useRoute()
 const router = useRouter()
 const censusStore = useCensusStore()
+const authStore = useAuthStore()
 
 const task = ref(null)
 const loading = ref(true)
-const records = ref([])
+const keyword = ref('')
+const taskUnits = ref([])
+
+const statusOptions = computed(() => [
+  ...CENSUS_RECORD_STATUS_OPTIONS,
+  { value: 'draft_placeholder', label: '未填报', type: 'info' },
+])
+
+const filteredUnits = computed(() => {
+  const kw = keyword.value.trim().toLowerCase()
+  if (!kw) return taskUnits.value
+  return taskUnits.value.filter(item => String(item.name || '').toLowerCase().includes(kw))
+})
+
+const showAddButton = computed(() => {
+  const kw = keyword.value.trim()
+  if (!kw) return false
+  return !taskUnits.value.some(item => String(item.name || '').trim().toLowerCase() === kw.toLowerCase())
+})
 
 onMounted(async () => {
   await censusStore.fetchTaskDetail(route.params.id)
   task.value = censusStore.currentTask
-  await loadRecords()
+  await loadTaskUnits()
   loading.value = false
 })
 
-function handleStartEntry(assignment) {
-  if (!assignment) return
-  router.push(`/m/entry/${route.params.id}/${assignment.id}`)
-}
+async function loadTaskUnits() {
+  const ids = new Set()
+  const assignmentByAccommodation = new Map()
+  censusStore.assignments.forEach(assignment => {
+    parseArray(assignment.targetAccommodationIds).forEach(id => {
+      const numericId = Number(id)
+      ids.add(numericId)
+      if (!assignmentByAccommodation.has(numericId)) assignmentByAccommodation.set(numericId, assignment.id)
+    })
+  })
 
-async function loadRecords() {
-  const assignmentIds = censusStore.assignments.map(item => item.id)
-  if (!assignmentIds.length) {
-    records.value = []
-    return
+  const allRecords = []
+  for (const assignment of censusStore.assignments) {
+    allRecords.push(...await db.censusRecords.where('assignmentId').equals(Number(assignment.id)).toArray())
   }
-  const all = []
-  for (const assignmentId of assignmentIds) {
-    all.push(...await db.censusRecords.where('assignmentId').equals(assignmentId).toArray())
+  allRecords.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt))
+
+  const nextRecordMap = new Map()
+  allRecords.forEach(record => {
+    const key = buildRecordKey(record)
+    if (key && !nextRecordMap.has(key)) nextRecordMap.set(key, record)
+  })
+  const rows = []
+  for (const id of ids) {
+    const unit = await db.accommodations.get(id)
+    if (!unit || unit.deletedAt) continue
+    const assignmentId = assignmentByAccommodation.get(id) || null
+    const record = nextRecordMap.get(`unit:${id}`) || nextRecordMap.get(`credit:${unit.creditCode}`) || null
+    rows.push({
+      ...unit,
+      assignmentId,
+      recordId: record?.id || null,
+      recordStatus: record?.status || '',
+      recordStatusLabel: getRecordStatusLabel(record?.status),
+    })
   }
-  records.value = all.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt))
+  taskUnits.value = rows.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
 }
 
-function recordAssignmentName(assignmentId) {
-  const assignment = censusStore.assignments.find(item => item.id === assignmentId)
-  return assignment?.areaName || assignment?.areaCode || '未关联区域'
+function parseArray(raw) {
+  try { return Array.isArray(raw) ? raw : JSON.parse(raw || '[]') } catch { return [] }
 }
 
-function editRecord(record) {
-  router.push(`/m/entry/${route.params.id}/${record.assignmentId}?recordId=${record.id}`)
+function buildRecordKey(record) {
+  if (record.accommodationId) return `unit:${record.accommodationId}`
+  if (record.creditCode) return `credit:${record.creditCode}`
+  return ''
 }
 
-async function submitRecord(record) {
-  await db.censusRecords.update(record.id, submitForCountyReviewPatch())
-  ElMessage.success('已提交审核')
-  await loadRecords()
+function getRecordStatusLabel(status) {
+  if (!status) return '未填报'
+  return CENSUS_RECORD_STATUS_OPTIONS.find(item => item.value === status)?.label || status
 }
 
-function canEditRecord(record) {
-  return ['draft', 'county_rejected'].includes(record.status)
+function sourceText(item) {
+  return getOptionLabel('catalogSource', item.catalogSource) || '-'
 }
 
-async function deleteRecord(record) {
-  try {
-    await ElMessageBox.confirm(`确定删除「${record.unitName || '未命名单位'}」的填报记录吗？`, '删除确认', { type: 'warning' })
-    await archiveCensusRecord(record.id, '移动端任务详情删除')
-    ElMessage.success('已删除，可在PC端删除管理中恢复')
-    await loadRecords()
-  } catch { /* cancel */ }
+function openUnit(item) {
+  const query = { unitId: String(item.id) }
+  if (item.recordId) query.recordId = String(item.recordId)
+  router.push({ path: `/m/entry/${route.params.id}/${item.assignmentId || 0}`, query })
+}
+
+async function handleCreateUnit() {
+  const name = keyword.value.trim()
+  if (!name) return
+  const assignmentId = await resolveAssignmentIdForCreate()
+  router.push({
+    path: `/m/entry/${route.params.id}/${assignmentId || 0}`,
+    query: { unitName: name },
+  })
+}
+
+async function resolveAssignmentIdForCreate() {
+  if (censusStore.assignments.length <= 1) return censusStore.assignments[0]?.id || 0
+  const exactMatch = censusStore.assignments.find(item => item.areaCode === authStore.userAreaCode)
+  if (exactMatch) return exactMatch.id
+  const cityPrefix = String(authStore.userAreaCode || '').substring(0, 4)
+  const cityMatch = censusStore.assignments.find(item => String(item.areaCode || '').startsWith(cityPrefix))
+  return cityMatch?.id || censusStore.assignments[0]?.id || 0
 }
 </script>
 
 <style lang="scss" scoped>
-.assignment-item {
-  padding: 14px 0;
-  border-bottom: 1px solid #f5f5f5;
-
-  &:last-child { border-bottom: none; }
-  &:active { background: #fafafa; }
+.task-hero {
+  box-shadow: 0 10px 28px rgba(17, 24, 39, 0.08);
 }
 
-.record-item {
-  padding: 12px 0;
-  border-bottom: 1px solid #f5f5f5;
-
-  &:last-child {
-    border-bottom: none;
-  }
-}
-
-.record-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: #1f2937;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.record-meta {
-  margin-top: 4px;
+.task-meta-line {
+  margin-top: 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #909399;
   font-size: 12px;
+}
+
+.search-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.empty-panel {
+  padding: 40px 0 28px;
+  text-align: center;
   color: #909399;
 }
 
-.record-actions {
+.unit-card {
+  margin-top: 12px;
+  padding: 14px;
+  border-radius: 14px;
+  background: #fafcff;
+  border: 1px solid #e7eef8;
+}
+
+.unit-card:active {
+  transform: scale(0.995);
+}
+
+.unit-card-head {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: flex-start;
   gap: 10px;
-  margin-top: 8px;
+}
+
+.unit-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.unit-address {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.5;
+}
+
+.unit-grid {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+  font-size: 12px;
+  color: #303133;
+
+  span {
+    display: block;
+    margin-bottom: 2px;
+    color: #909399;
+  }
 }
 </style>

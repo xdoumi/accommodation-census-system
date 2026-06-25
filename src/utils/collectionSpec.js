@@ -111,10 +111,11 @@ export const COLLECTION_FIELD_MAP = {
     visibleWhen: data => ['catalog_spot_check', 'imported_catalog'].includes(data.checkType),
     type: 'select',
     options: [
-      { value: 'market_supervision', label: '市监' },
-      { value: 'culture_tourism', label: '文旅厅' },
-      { value: 'public_security_hotel', label: '公安旅馆治安系统' },
-      { value: 'other', label: '其他' },
+      { value: 'spot_check_list', label: '抽查名单（文旅和公安一致）' },
+      { value: 'public_security_hotel', label: '公安' },
+      { value: 'culture_tourism', label: '文旅' },
+      { value: 'market_supervision', label: '市监局' },
+      { value: 'ota_platform', label: 'OTA平台' },
     ],
   },
   licenseType: {
