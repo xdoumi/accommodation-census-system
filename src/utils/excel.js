@@ -4,6 +4,7 @@ import { CATEGORY_MAP, OPERATING_STATUS_MAP, LICENSE_STATUS_MAP, FIRE_INSPECTION
 import {
   COLLECTION_FIELD_MAP,
   COLLECTION_MODULES,
+  INDUSTRY_OPTIONS,
   createEmptyCollectionForm,
   extractAccommodationPatch,
   shouldSkipBusinessModule,
@@ -270,6 +271,10 @@ function parseFieldValue(key, raw) {
 
 function parseOptionValue(field, text) {
   if (!text) return ''
+  if (field.type === 'industry') {
+    const industry = INDUSTRY_OPTIONS.find(opt => opt.value === text || opt.label === text)
+    return industry?.value || text
+  }
   const option = field.options?.find(opt => opt.value === text || opt.label === text)
   return option?.value || text
 }

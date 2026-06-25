@@ -154,12 +154,12 @@
         <el-form-item label="分配区域" prop="assignedAreaCodes">
           <AreaAssignTree v-model="subTaskForm.assignedAreaCodes" />
         </el-form-item>
-        <el-form-item label="普查人员" prop="responsibleUserIds">
+        <el-form-item label="普查人员" prop="responsibleUserId">
           <el-select
-            v-model="subTaskForm.responsibleUserIds"
-            multiple
+            v-model="subTaskForm.responsibleUserId"
             filterable
-            placeholder="输入姓名、用户名或手机号搜索普查人员"
+            clearable
+            placeholder="输入姓名、用户名或手机号搜索并选择一名普查人员"
             style="width: 100%"
           >
             <el-option
@@ -313,7 +313,7 @@ const subTaskForm = reactive({
   deadline: '',
   description: '',
   assignedAreaCodes: [],
-  responsibleUserIds: [],
+  responsibleUserId: null,
   cityAdminIds: [],
   countyAdminIds: [],
 })
@@ -322,7 +322,7 @@ const subTaskRules = {
   title: [{ required: true, message: '请输入子任务名称', trigger: 'blur' }],
   deadline: [{ required: true, message: '请选择截止日期', trigger: 'change' }],
   assignedAreaCodes: [{ required: true, type: 'array', min: 1, message: '请选择分配区域', trigger: 'change' }],
-  responsibleUserIds: [{ required: true, type: 'array', min: 1, message: '请选择普查人员', trigger: 'change' }],
+  responsibleUserId: [{ required: true, message: '请选择一名普查人员', trigger: 'change' }],
   cityAdminIds: [{ required: true, type: 'array', min: 1, message: '请选择市级管理员', trigger: 'change' }],
   countyAdminIds: [{ required: true, type: 'array', min: 1, message: '请选择县级管理员', trigger: 'change' }],
 }
@@ -382,7 +382,7 @@ function openSubTaskDialog() {
   subTaskForm.deadline = store.currentTask.deadline?.split('T')[0] || ''
   subTaskForm.description = ''
   subTaskForm.assignedAreaCodes = []
-  subTaskForm.responsibleUserIds = []
+  subTaskForm.responsibleUserId = null
   subTaskForm.cityAdminIds = []
   subTaskForm.countyAdminIds = []
   subTaskDialogVisible.value = true
@@ -394,7 +394,7 @@ function openEditSubTaskDialog(task) {
   subTaskForm.deadline = task.deadline?.split('T')[0] || ''
   subTaskForm.description = task.description || ''
   subTaskForm.assignedAreaCodes = parseArray(task.assignedAreaCodes)
-  subTaskForm.responsibleUserIds = parseArray(task.responsibleUserIds)
+  subTaskForm.responsibleUserId = parseArray(task.responsibleUserIds)[0] || null
   subTaskForm.cityAdminIds = parseArray(task.cityAdminIds)
   subTaskForm.countyAdminIds = parseArray(task.countyAdminIds)
   subTaskDialogVisible.value = true
@@ -405,7 +405,8 @@ async function submitSubTask() {
   if (!valid) return
   submittingSubTask.value = true
   try {
-    const selectedUsers = enumeratorUsers.value.filter(user => subTaskForm.responsibleUserIds.includes(user.id))
+    const responsibleUserIds = subTaskForm.responsibleUserId ? [subTaskForm.responsibleUserId] : []
+    const selectedUsers = enumeratorUsers.value.filter(user => responsibleUserIds.includes(user.id))
     const selectedCityAdmins = cityAdminUsers.value.filter(user => subTaskForm.cityAdminIds.includes(user.id))
     const selectedCountyAdmins = countyAdminUsers.value.filter(user => subTaskForm.countyAdminIds.includes(user.id))
     const payload = {
@@ -413,7 +414,7 @@ async function submitSubTask() {
       description: subTaskForm.description,
       deadline: subTaskForm.deadline,
       assignedAreaCodes: JSON.stringify(subTaskForm.assignedAreaCodes),
-      responsibleUserIds: JSON.stringify(subTaskForm.responsibleUserIds),
+      responsibleUserIds: JSON.stringify(responsibleUserIds),
       responsibleUserNames: selectedUsers.map(user => user.realName).join('、'),
       cityAdminIds: JSON.stringify(subTaskForm.cityAdminIds),
       cityAdminNames: selectedCityAdmins.map(user => user.realName).join('、'),
@@ -552,12 +553,24 @@ function isRecordInReviewScope(row) {
 
 async function reviewRecord(row, action) {
   try {
-    const patch = buildReviewPatch(row, authStore.userRole, action, authStore.currentUser?.id)
+    let comment = ''
+    if (action === 'reject') {
+      const result = await ElMessageBox.prompt('请填写驳回原因，便于下级或普查员修改。', '驳回原因', {
+        confirmButtonText: '确定驳回',
+        cancelButtonText: '取消',
+        inputType: 'textarea',
+        inputPattern: /\S+/,
+        inputErrorMessage: '请填写驳回原因',
+      })
+      comment = result.value
+    }
+    const patch = buildReviewPatch(row, authStore.userRole, action, authStore.currentUser?.id, comment)
     await db.censusRecords.update(row.id, patch)
     Object.assign(row, patch)
     if (patch.status === 'available') await publishRecordToAccommodation(row)
     ElMessage.success(action === 'approve' ? (patch.status === 'available' ? '省级审核通过，记录已可用' : '已提交下一级审核') : '已驳回')
   } catch (error) {
+    if (['cancel', 'close'].includes(error)) return
     ElMessage.error(error.message || '审核失败')
   }
 }
@@ -604,7 +617,7 @@ function formatFieldValue(key, field, value) {
   if (field.type === 'photo') return value ? (activeForm.value.businessLicensePhotoName || '已上传图片') : ''
   if (field.type === 'signature') return value ? '已签字' : ''
   if (field.type === 'photos') return Array.isArray(value) && value.length ? value.map((photo, index) => photo.name || `现场照片${index + 1}.jpg`).join('、') : ''
-  if (['select', 'radio', 'checkbox'].includes(field.type)) return getOptionLabel(key, value)
+  if (['select', 'radio', 'checkbox', 'industry'].includes(field.type)) return getOptionLabel(key, value)
   if (Array.isArray(value)) return value.join('、')
   return value
 }

@@ -52,4 +52,19 @@ db.version(4).stores({
   deletedItems: '++id, type, sourceId, deletedAt',
 })
 
+// v5: 系统管理增加组织机构管理
+db.version(5).stores({
+  users: '++id, &username, role, areaCode, status',
+  accommodations: '++id, &creditCode, category, cityCode, countyCode, operatingStatus, starRating',
+  censusTasks: '++id, taskType, parentTaskId, status, startDate, deadline',
+  censusAssignments: '++id, taskId, areaCode, assignedTo, status',
+  censusRecords: '++id, taskId, assignmentId, accommodationId, status, filledBy',
+  areas: '&code, level, parentCode',
+  operationLogs: '++id, userId, module, action, createdAt',
+  aiChatSessions: '++id, &sessionId, userId, createdAt',
+  aiChatMessages: '++id, sessionId, role, createdAt',
+  deletedItems: '++id, type, sourceId, deletedAt',
+  organizations: '++id, parentId, level, areaCode, status',
+})
+
 export default db

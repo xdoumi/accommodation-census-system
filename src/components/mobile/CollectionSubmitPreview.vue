@@ -43,7 +43,7 @@ function valueText(key, field, value) {
       ? value.map((photo, index) => photo.name || `现场照片${index + 1}.jpg`).join('、')
       : '未上传'
   }
-  if (['select', 'radio', 'checkbox'].includes(field.type)) return getOptionLabel(key, value)
+  if (['select', 'radio', 'checkbox', 'industry'].includes(field.type)) return getOptionLabel(key, value)
   return value ?? ''
 }
 </script>

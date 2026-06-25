@@ -91,7 +91,7 @@ export function isReviewerInScope(assignment, role, userId, userAreaCode) {
   return false
 }
 
-export function buildReviewPatch(record, role, action, userId) {
+export function buildReviewPatch(record, role, action, userId, comment = '') {
   const step = getReviewStepForRole(role)
   if (!step) throw new Error('当前角色无审核权限')
   const currentStatus = normalizeRecordStatus(record.status)
@@ -115,6 +115,8 @@ export function buildReviewPatch(record, role, action, userId) {
     status: step.rejectTo,
     reviewLevel: step.level,
     reviewAction: 'reject',
+    reviewComment: comment,
+    rejectReason: comment,
     reviewedBy: userId,
     reviewedAt: now,
     [step.rejectedByField]: userId,

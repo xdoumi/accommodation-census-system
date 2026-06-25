@@ -24,7 +24,7 @@
           <template #default="{ row }">{{ actualStatusText(row) || '-' }}</template>
         </el-table-column>
         <el-table-column prop="displayAddress" label="实际经营地址" min-width="260" show-overflow-tooltip />
-        <el-table-column label="来源" width="90" align="center">
+        <el-table-column label="来源" width="180" align="center" show-overflow-tooltip>
           <template #default="{ row }">{{ sourceText(row) }}</template>
         </el-table-column>
         <el-table-column label="核查类型" width="130" align="center">
@@ -50,7 +50,7 @@ import { useCensusStore } from '@/stores/census'
 import { ElMessage } from 'element-plus'
 import { exportToExcel } from '@/utils/excel'
 import { OPERATING_STATUS_OPTIONS } from '@/utils/constants'
-import { getOptionLabel } from '@/utils/collectionSpec'
+import { buildCollectionFormFromUnit, getOptionLabel } from '@/utils/collectionSpec'
 import { inUserScope } from '@/utils/dataScope'
 import { getFullCollectionExportColumns } from '@/utils/accommodationWorkflow'
 import db from '@/db'

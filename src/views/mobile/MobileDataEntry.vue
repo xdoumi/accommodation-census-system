@@ -402,6 +402,11 @@ watch(() => form.licenseType, async value => {
   scrollToModule('C')
 })
 
+watch(() => form.economyIndustryCode, value => {
+  const next = inferStarIndustryFlag(value)
+  if (form.isStarIndustryCode !== next) form.isStarIndustryCode = next
+})
+
 let saveTimer = null
 
 async function loadUnits() {
@@ -786,7 +791,10 @@ async function saveDraft() {
 }
 
 async function handleSubmit() {
-  if (readOnly.value) return
+  if (readOnly.value) {
+    ElMessage.warning('当前记录已进入审核流程，仅可查看，不能提交预览')
+    return
+  }
   if (!validateAll()) {
     ElMessage.error('存在未完成字段，请核对后提交')
     scrollToFirstError()
@@ -938,7 +946,7 @@ const FieldControl = defineComponent({
             name: props.fieldKey,
             value: opt.value,
             checked: props.form[props.fieldKey] === opt.value,
-            disabled: props.disabled,
+            disabled: props.disabled || props.fieldKey === 'isStarIndustryCode',
             onChange: () => { props.form[props.fieldKey] = opt.value },
           }),
           h('span', null, opt.label),

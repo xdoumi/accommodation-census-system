@@ -170,7 +170,7 @@ function generateAccommodations() {
   const businessTypes = ['企业法人', '个体工商户', '个人经营']
   const operatingStatuses = ['operating', 'operating', 'operating', 'operating', 'operating', 'suspended', 'closed', 'renovating']
   const checkTypes = ['catalog_spot_check', 'imported_catalog', 'new_catalog']
-  const catalogSources = ['market_supervision', 'culture_tourism', 'public_security_hotel']
+  const catalogSources = ['spot_check_list', 'public_security_hotel', 'culture_tourism', 'market_supervision', 'ota_platform']
   const accommodations = []
   const usedNames = new Set()
   let id = 1
@@ -245,6 +245,82 @@ function generateAccommodations() {
   }
 
   return accommodations
+}
+
+function generateOrganizations(users = []) {
+  const now = new Date().toISOString()
+  const userIdsByArea = new Map()
+  users.forEach(user => {
+    const list = userIdsByArea.get(user.areaCode) || []
+    list.push(user.id)
+    userIdsByArea.set(user.areaCode, list)
+  })
+
+  const rows = [
+    {
+      id: 1,
+      name: '贵州省文化和旅游厅',
+      parentId: null,
+      level: 1,
+      areaCode: '520000',
+      areaName: '贵州省',
+      responsibleUserIds: JSON.stringify(userIdsByArea.get('520000') || []),
+      status: 'active',
+      createdAt: now,
+      updatedAt: now,
+    },
+  ]
+  let id = 2
+
+  AREA_DATA.filter(area => area.level === 2).forEach(city => {
+    const cityOrgId = id++
+    rows.push({
+      id: cityOrgId,
+      name: `${city.name}文化和旅游局`,
+      parentId: 1,
+      level: 2,
+      areaCode: city.code,
+      areaName: city.name,
+      responsibleUserIds: JSON.stringify(userIdsByArea.get(city.code) || []),
+      status: 'active',
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    AREA_DATA.filter(area => area.level === 3 && area.parentCode === city.code).forEach(county => {
+      const countyOrgId = id++
+      rows.push({
+        id: countyOrgId,
+        name: `${county.name}文化和旅游局`,
+        parentId: cityOrgId,
+        level: 3,
+        areaCode: county.code,
+        areaName: county.name,
+        responsibleUserIds: JSON.stringify(userIdsByArea.get(county.code)?.filter(userId => userId < 11) || []),
+        status: 'active',
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      const enumerators = (userIdsByArea.get(county.code) || []).filter(userId => userId >= 11)
+      if (enumerators.length) {
+        rows.push({
+          id: id++,
+          name: `${county.name}普查人员`,
+          parentId: countyOrgId,
+          level: 4,
+          areaCode: county.code,
+          areaName: county.name,
+          responsibleUserIds: JSON.stringify(enumerators),
+          status: 'active',
+          createdAt: now,
+          updatedAt: now,
+        })
+      }
+    })
+  })
+
+  return rows
 }
 
 function generateCensusTasks() {
@@ -375,7 +451,7 @@ function areaMatchesUnit(areaCode, item) {
 
 function catalogPatchForId(id) {
   const checkTypes = ['catalog_spot_check', 'imported_catalog', 'new_catalog']
-  const catalogSources = ['market_supervision', 'culture_tourism', 'public_security_hotel']
+  const catalogSources = ['spot_check_list', 'public_security_hotel', 'culture_tourism', 'market_supervision', 'ota_platform']
   return {
     checkType: checkTypes[Number(id || 0) % checkTypes.length],
     catalogSource: catalogSources[Number(id || 0) % catalogSources.length],
@@ -449,7 +525,8 @@ async function removeReviewerUsers(db) {
 }
 
 async function clearSeededData(db) {
-  await db.transaction('rw', db.areas, db.users, db.accommodations, db.censusTasks, db.censusAssignments, db.censusRecords, db.operationLogs, async () => {
+  const stores = [db.areas, db.users, db.accommodations, db.censusTasks, db.censusAssignments, db.censusRecords, db.operationLogs, db.organizations].filter(Boolean)
+  await db.transaction('rw', ...stores, async () => {
     await db.areas.clear()
     await db.users.clear()
     await db.accommodations.clear()
@@ -457,7 +534,18 @@ async function clearSeededData(db) {
     await db.censusAssignments.clear()
     await db.censusRecords.clear()
     await db.operationLogs.clear()
+    if (db.organizations) await db.organizations.clear()
   })
+}
+
+async function backfillOrganizations(db) {
+  if (!db.organizations) return false
+  const count = await db.organizations.count()
+  if (count > 0) return false
+  const users = await db.users.toArray()
+  const organizations = generateOrganizations(users)
+  await db.organizations.bulkAdd(organizations)
+  return true
 }
 
 export async function clearBusinessData(db) {
@@ -490,6 +578,7 @@ export async function seedDatabase(db) {
     await removeReviewerUsers(db)
     await backfillAccommodationCatalogFields(db)
     await backfillAssignmentUnitStats(db)
+    await backfillOrganizations(db)
     if (currentVersion !== SEED_VERSION) {
       localStorage.setItem('accommodation_seed_version', SEED_VERSION)
     }
@@ -503,15 +592,17 @@ export async function seedDatabase(db) {
   const accommodations = generateAccommodations()
   const tasks = generateCensusTasks()
   const assignments = generateAssignments(tasks, accommodations)
+  const organizations = generateOrganizations(users)
 
-  await db.transaction('rw', db.areas, db.users, db.accommodations, db.censusTasks, db.censusAssignments, db.censusRecords, async () => {
+  await db.transaction('rw', db.areas, db.users, db.accommodations, db.censusTasks, db.censusAssignments, db.censusRecords, db.organizations, async () => {
     await db.areas.bulkAdd(AREA_DATA)
     await db.users.bulkAdd(users)
     await db.accommodations.bulkAdd(accommodations)
     await db.censusTasks.bulkAdd(tasks)
     await db.censusAssignments.bulkAdd(assignments)
+    await db.organizations.bulkAdd(organizations)
   })
 
   localStorage.setItem('accommodation_seed_version', SEED_VERSION)
-  console.log(`[Seed] 贵州数据初始化完成：${AREA_DATA.length}个区域, ${users.length}个用户, ${accommodations.length}个住宿单位, ${tasks.length}个任务, ${assignments.length}个子任务分配`)
+  console.log(`[Seed] 贵州数据初始化完成：${AREA_DATA.length}个区域, ${users.length}个用户, ${organizations.length}个组织, ${accommodations.length}个住宿单位, ${tasks.length}个任务, ${assignments.length}个子任务分配`)
 }

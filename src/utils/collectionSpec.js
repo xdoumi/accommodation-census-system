@@ -325,12 +325,13 @@ export const COLLECTION_FIELD_MAP = {
 export const COLLECTION_FIELD_LIST = Object.entries(COLLECTION_FIELD_MAP).map(([key, spec]) => ({ key, ...spec }))
 
 export const INDUSTRY_OPTIONS = [
-  { value: '6110', label: '6110 旅游饭店', star: true },
-  { value: '6121', label: '6121 经济型连锁酒店', star: true },
-  { value: '6129', label: '6129 其他一般旅馆', star: false },
-  { value: '6130', label: '6130 民宿服务', star: false },
-  { value: '6140', label: '6140 露营地服务', star: false },
-  { value: '6190', label: '6190 其他住宿业', star: false },
+  { value: '6110', label: '6110旅游饭店', star: false },
+  { value: '6121', label: '6121经济型连锁酒店', star: false },
+  { value: '6129', label: '6129其他一般旅馆', star: false },
+  { value: '6130', label: '6130*民宿服务', star: true },
+  { value: '6140', label: '6140*露营地服务', star: true },
+  { value: '6190', label: '6190*其他住宿业', star: true },
+  { value: '8511', label: '8511*休养旅游住宿服务', star: true },
 ]
 
 export function getCollectionField(key) {
@@ -340,6 +341,9 @@ export function getCollectionField(key) {
 export function getOptionLabel(fieldKey, value) {
   const field = COLLECTION_FIELD_MAP[fieldKey]
   if (!field) return value ?? ''
+  if (field.type === 'industry') {
+    return INDUSTRY_OPTIONS.find(o => o.value === value)?.label || value || ''
+  }
   if (field.type === 'checkbox') {
     const values = Array.isArray(value) ? value : []
     return values.map(v => field.options?.find(o => o.value === v)?.label || v).join('、')

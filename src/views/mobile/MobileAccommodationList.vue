@@ -44,7 +44,7 @@ import db from '@/db'
 import { CENSUS_RECORD_STATUS_OPTIONS } from '@/utils/constants'
 import { formatDateTime } from '@/utils/formatters'
 import { getOptionLabel } from '@/utils/collectionSpec'
-import { submitForCountyReviewPatch } from '@/utils/reviewFlow'
+import { normalizeRecordStatus, submitForCountyReviewPatch } from '@/utils/reviewFlow'
 import { archiveCensusRecord } from '@/utils/accommodationWorkflow'
 import StatusTag from '@/components/common/StatusTag.vue'
 
@@ -94,8 +94,11 @@ async function decorateRecord(record) {
   return {
     ...record,
     ...formData,
+    status: normalizeRecordStatus(record.status),
     unitName: record.unitName || formData.operatingName || formData.registeredName || formData.unitName,
     creditCode: record.creditCode || formData.creditCode,
+    catalogSource: record.catalogSource || formData.catalogSource || '',
+    checkType: record.checkType || formData.checkType || '',
     taskTitle: task?.title || '',
   }
 }
@@ -105,9 +108,7 @@ function optionLabel(fieldKey, value) {
 }
 
 function sourceText(record) {
-  if (record.source === 'mobile') return '移动端'
-  if (record.source === 'pc') return 'PC端'
-  return record.taskTitle || '-'
+  return optionLabel('catalogSource', record.catalogSource) || '-'
 }
 
 function canEditRecord(record) {

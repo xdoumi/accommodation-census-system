@@ -115,6 +115,16 @@ export const PERMISSION_TREE = [
         ],
       },
       {
+        value: 'system:organization-page',
+        label: '组织机构管理',
+        children: [
+          { value: 'system:organization:view', label: '查看' },
+          { value: 'system:organization:create', label: '新增' },
+          { value: 'system:organization:update', label: '编辑' },
+          { value: 'system:organization:delete', label: '删除' },
+        ],
+      },
+      {
         value: 'system:ai-page',
         label: 'AI 设置',
         children: [
@@ -146,6 +156,7 @@ export const DEFAULT_ROLE_PERMISSIONS = {
     'statistics:view', 'statistics:map:view', 'statistics:export',
     'system:user:view', 'system:user:create', 'system:user:update', 'system:user:status', 'system:user:reset_password', 'system:user:delete',
     'system:role:view', 'system:role:create', 'system:role:update', 'system:role:delete',
+    'system:organization:view', 'system:organization:create', 'system:organization:update', 'system:organization:delete',
     'system:ai:manage',
   ],
   provincial_admin: [
@@ -156,6 +167,7 @@ export const DEFAULT_ROLE_PERMISSIONS = {
     'statistics:view', 'statistics:map:view', 'statistics:export',
     'system:user:view', 'system:user:create', 'system:user:update', 'system:user:status', 'system:user:reset_password',
     'system:role:view', 'system:role:create', 'system:role:update', 'system:role:delete',
+    'system:organization:view', 'system:organization:create', 'system:organization:update', 'system:organization:delete',
     'system:ai:manage',
   ],
   city_admin: [
@@ -164,12 +176,14 @@ export const DEFAULT_ROLE_PERMISSIONS = {
     'census:view', 'census:fill', 'census:review',
     'statistics:view', 'statistics:map:view',
     'system:user:view', 'system:user:create', 'system:user:update',
+    'system:organization:view',
   ],
   county_admin: [
     'dashboard:view',
     'accommodation:view', 'accommodation:create', 'accommodation:update', 'accommodation:review:view',
     'census:view', 'census:fill', 'census:review',
     'statistics:view', 'statistics:map:view',
+    'system:organization:view',
   ],
   enumerator: [
     'dashboard:view',
@@ -184,9 +198,17 @@ export const DEFAULT_ROLE_PERMISSIONS = {
  */
 export function getPermissionsByRole(role) {
   const configured = loadRolePermissionConfig()
-  const source = configured?.[role] || DEFAULT_ROLE_PERMISSIONS[role] || []
+  const source = configured?.[role]
+    ? mergeDefaultAdditions(role, configured[role])
+    : DEFAULT_ROLE_PERMISSIONS[role] || []
   const valid = new Set(ALL_PERMISSIONS.map(item => item.value))
   return source.filter(permission => valid.has(permission))
+}
+
+function mergeDefaultAdditions(role, permissions = []) {
+  const defaults = DEFAULT_ROLE_PERMISSIONS[role] || []
+  if (!defaults.length) return permissions
+  return Array.from(new Set([...permissions, ...defaults.filter(permission => permission.startsWith('system:organization:'))]))
 }
 
 /**

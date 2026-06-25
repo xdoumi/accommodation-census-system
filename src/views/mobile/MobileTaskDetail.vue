@@ -70,6 +70,7 @@ import { useAuthStore } from '@/stores/auth'
 import { CENSUS_RECORD_STATUS_OPTIONS, CENSUS_TASK_STATUS_OPTIONS } from '@/utils/constants'
 import { formatDate } from '@/utils/formatters'
 import { getOptionLabel } from '@/utils/collectionSpec'
+import { normalizeRecordStatus } from '@/utils/reviewFlow'
 import StatusTag from '@/components/common/StatusTag.vue'
 import db from '@/db'
 
@@ -139,7 +140,7 @@ async function loadTaskUnits() {
       ...unit,
       assignmentId,
       recordId: record?.id || null,
-      recordStatus: record?.status || '',
+      recordStatus: record ? normalizeRecordStatus(record.status) : '',
       recordStatusLabel: getRecordStatusLabel(record?.status),
     })
   }
@@ -158,7 +159,8 @@ function buildRecordKey(record) {
 
 function getRecordStatusLabel(status) {
   if (!status) return '未填报'
-  return CENSUS_RECORD_STATUS_OPTIONS.find(item => item.value === status)?.label || status
+  const normalized = normalizeRecordStatus(status)
+  return CENSUS_RECORD_STATUS_OPTIONS.find(item => item.value === normalized)?.label || normalized
 }
 
 function sourceText(item) {

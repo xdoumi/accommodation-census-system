@@ -138,6 +138,12 @@ const routes = [
         meta: { title: '角色权限', permission: 'system:role:view', icon: 'Lock' },
       },
       {
+        path: 'system/organizations',
+        name: 'OrganizationManagement',
+        component: () => import('@/views/system/OrganizationManagement.vue'),
+        meta: { title: '组织机构管理', permission: 'system:organization:view', icon: 'OfficeBuilding' },
+      },
+      {
         path: 'system/ai-settings',
         name: 'AiSettings',
         component: () => import('@/views/system/AiSettings.vue'),

@@ -33,7 +33,7 @@ export function formatCollectionValue(key, field, value, form = {}) {
       ? value.map((photo, index) => photo.name || `现场照片${index + 1}.jpg`).join('、')
       : ''
   }
-  if (['select', 'radio', 'checkbox'].includes(field.type)) return getOptionLabel(key, value)
+  if (['select', 'radio', 'checkbox', 'industry'].includes(field.type)) return getOptionLabel(key, value)
   if (Array.isArray(value)) return value.join('、')
   return value ?? ''
 }

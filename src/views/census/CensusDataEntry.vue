@@ -90,7 +90,7 @@
 </template>
 
 <script setup>
-import { computed, defineComponent, h, onMounted, reactive, ref } from 'vue'
+import { computed, defineComponent, h, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   ElCheckbox,
@@ -99,6 +99,7 @@ import {
   ElInput,
   ElInputNumber,
   ElMessage,
+  ElMessageBox,
   ElOption,
   ElRadio,
   ElRadioGroup,
@@ -160,6 +161,11 @@ onMounted(async () => {
   if (route.query.recordId) {
     await openRecordById(Number(route.query.recordId))
   }
+})
+
+watch(() => fillForm.economyIndustryCode, value => {
+  const next = inferStarIndustryFlag(value)
+  if (fillForm.isStarIndustryCode !== next) fillForm.isStarIndustryCode = next
 })
 
 async function handleAssignmentChange(assignmentId) {
@@ -272,12 +278,24 @@ function isRecordInReviewScope(record) {
 async function reviewRecord(record, action) {
   if (!record) return
   try {
-    const patch = buildReviewPatch(record, authStore.userRole, action, authStore.currentUser?.id)
+    let comment = ''
+    if (action === 'reject') {
+      const result = await ElMessageBox.prompt('请填写驳回原因，便于下级或普查员修改。', '驳回原因', {
+        confirmButtonText: '确定驳回',
+        cancelButtonText: '取消',
+        inputType: 'textarea',
+        inputPattern: /\S+/,
+        inputErrorMessage: '请填写驳回原因',
+      })
+      comment = result.value
+    }
+    const patch = buildReviewPatch(record, authStore.userRole, action, authStore.currentUser?.id, comment)
     await db.censusRecords.update(record.id, patch)
     Object.assign(record, patch)
     if (patch.status === 'available') await publishRecordToAccommodation(record)
     ElMessage.success(patch.status === 'available' ? '省级审核通过，记录已可用' : '已提交下一级审核')
   } catch (error) {
+    if (['cancel', 'close'].includes(error)) return
     ElMessage.error(error.message || '审核失败')
   }
 }
@@ -361,7 +379,11 @@ const RadioControl = defineComponent({
   props: ['modelValue', 'field'],
   emits: ['update:modelValue'],
   setup(props, { emit }) {
-    return () => h(ElRadioGroup, { modelValue: props.modelValue, 'onUpdate:modelValue': v => emit('update:modelValue', v) }, () =>
+    return () => h(ElRadioGroup, {
+      modelValue: props.modelValue,
+      disabled: props.field?.code === 'C9',
+      'onUpdate:modelValue': v => emit('update:modelValue', v),
+    }, () =>
       (props.field.options || []).map(opt => h(ElRadio, { label: opt.value }, () => opt.label)),
     )
   },

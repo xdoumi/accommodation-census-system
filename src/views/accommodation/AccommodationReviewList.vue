@@ -46,7 +46,7 @@
           <template #default="{ row }">{{ getOptionLabel('actualOperatingStatus', row.actualOperatingStatus) || '-' }}</template>
         </el-table-column>
         <el-table-column prop="displayAddress" label="实际经营地址" min-width="240" show-overflow-tooltip />
-        <el-table-column label="来源" width="90" align="center">
+        <el-table-column label="来源" width="180" align="center" show-overflow-tooltip>
           <template #default="{ row }">{{ sourceText(row) }}</template>
         </el-table-column>
         <el-table-column label="核查类型" width="130" align="center">
@@ -55,7 +55,6 @@
         <el-table-column label="状态" width="130" align="center">
           <template #default="{ row }"><StatusTag :value="row.status" :options="CENSUS_RECORD_STATUS_OPTIONS" /></template>
         </el-table-column>
-        <el-table-column prop="status" label="状态值" width="180" align="center" show-overflow-tooltip />
         <el-table-column label="操作" width="260" align="center" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="openRecord(row)">查看</el-button>
@@ -74,8 +73,10 @@
           <el-descriptions-item label="市州">{{ areaStore.getAreaName(activeRow.cityCode) || '-' }}</el-descriptions-item>
           <el-descriptions-item label="区县">{{ areaStore.getAreaName(activeRow.countyCode) || '-' }}</el-descriptions-item>
           <el-descriptions-item label="状态"><StatusTag :value="activeRow.status" :options="CENSUS_RECORD_STATUS_OPTIONS" /></el-descriptions-item>
-          <el-descriptions-item label="状态值">{{ activeRow.status || '-' }}</el-descriptions-item>
           <el-descriptions-item label="提交来源">{{ sourceText(activeRow) }}</el-descriptions-item>
+          <el-descriptions-item v-if="activeRow.reviewComment || activeRow.rejectReason" label="驳回原因" :span="2">
+            {{ activeRow.reviewComment || activeRow.rejectReason }}
+          </el-descriptions-item>
         </el-descriptions>
 
         <div v-for="group in previewGroups" :key="group.module.key" class="record-section">
@@ -100,7 +101,7 @@ import db from '@/db'
 import { useAuthStore } from '@/stores/auth'
 import { useAreaStore } from '@/stores/area'
 import { CENSUS_RECORD_STATUS_OPTIONS } from '@/utils/constants'
-import { buildReviewPatch, canReviewRecord, getReviewStepForRole, isReviewerInScope } from '@/utils/reviewFlow'
+import { buildReviewPatch, canReviewRecord, getReviewStepForRole, isReviewerInScope, normalizeRecordStatus } from '@/utils/reviewFlow'
 import { COLLECTION_FIELD_MAP, COLLECTION_MODULES, getOptionLabel, getVisibleModuleFields, shouldSkipBusinessModule } from '@/utils/collectionSpec'
 import { archiveCensusRecord, buildDisplayAddress, buildDisplayName, formatCollectionValue, parseRecordFormData, publishRecordToAccommodation } from '@/utils/accommodationWorkflow'
 import AreaMultiSelect from '@/components/common/AreaMultiSelect.vue'
@@ -147,6 +148,7 @@ async function loadRows() {
     ])
     const assignmentById = new Map(assignments.map(item => [item.id, item]))
     const taskById = new Map(tasks.map(item => [item.id, item]))
+    await syncAvailableRecords(records)
     rows.value = records
       .filter(record => record.status !== 'draft')
       .map(record => decorateRecord(record, assignmentById.get(record.assignmentId), taskById.get(record.taskId)))
@@ -156,6 +158,14 @@ async function loadRows() {
     pagination.value.total = rows.value.length
   } finally {
     loading.value = false
+  }
+}
+
+async function syncAvailableRecords(records) {
+  for (const record of records) {
+    if (normalizeRecordStatus(record.status) === 'available') {
+      await publishRecordToAccommodation(record)
+    }
   }
 }
 
@@ -177,6 +187,7 @@ function decorateRecord(record, assignment, task) {
     actualOperatingStatus: formData.actualOperatingStatus || '',
     checkType: record.checkType || formData.checkType || '',
     catalogSource: record.catalogSource || formData.catalogSource || '',
+    status: normalizeRecordStatus(record.status),
   }
 }
 
@@ -222,13 +233,25 @@ function canCurrentUserReview(row) {
 
 async function reviewRecord(row, action) {
   try {
-    const patch = buildReviewPatch(row, authStore.userRole, action, authStore.currentUser?.id)
+    let comment = ''
+    if (action === 'reject') {
+      const result = await ElMessageBox.prompt('请填写驳回原因，便于下级或普查员修改。', '驳回原因', {
+        confirmButtonText: '确定驳回',
+        cancelButtonText: '取消',
+        inputType: 'textarea',
+        inputPattern: /\S+/,
+        inputErrorMessage: '请填写驳回原因',
+      })
+      comment = result.value
+    }
+    const patch = buildReviewPatch(row, authStore.userRole, action, authStore.currentUser?.id, comment)
     await db.censusRecords.update(row.id, patch)
     Object.assign(row, patch)
     if (patch.status === 'available') await publishRecordToAccommodation(row)
     ElMessage.success(action === 'approve' ? (patch.status === 'available' ? '省级审核通过，已同步到住宿单位列表' : '已提交下一级审核') : '已驳回')
     await loadRows()
   } catch (error) {
+    if (['cancel', 'close'].includes(error)) return
     ElMessage.error(error.message || '审核失败')
   }
 }

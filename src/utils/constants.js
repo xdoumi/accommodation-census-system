@@ -135,16 +135,13 @@ export const CENSUS_ASSIGNMENT_STATUS_MAP = Object.fromEntries(CENSUS_ASSIGNMENT
 // 填报记录状态
 export const CENSUS_RECORD_STATUS_OPTIONS = [
   { value: 'draft', label: '草稿', type: 'info' },
-  { value: 'submitted', label: '县级待审', type: 'warning' },
   { value: 'pending_county_review', label: '县级待审', type: 'warning' },
   { value: 'county_rejected', label: '县级已驳回', type: 'danger' },
   { value: 'pending_city_review', label: '市级待审', type: 'warning' },
   { value: 'city_rejected', label: '市级已驳回', type: 'danger' },
   { value: 'pending_province_review', label: '省级待审', type: 'warning' },
   { value: 'province_rejected', label: '省级已驳回', type: 'danger' },
-  { value: 'approved', label: '可用', type: 'success' },
   { value: 'available', label: '可用', type: 'success' },
-  { value: 'rejected', label: '已驳回', type: 'danger' },
 ]
 
 export const CENSUS_RECORD_STATUS_MAP = Object.fromEntries(CENSUS_RECORD_STATUS_OPTIONS.map(s => [s.value, s.label]))

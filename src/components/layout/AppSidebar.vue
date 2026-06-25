@@ -47,13 +47,14 @@
         <el-menu-item index="/statistics/report" v-if="authStore.hasPermission('statistics:export')">报表导出</el-menu-item>
       </el-sub-menu>
 
-      <el-sub-menu index="system" v-if="authStore.hasPermission('system:user:view') || authStore.hasPermission('system:role:view') || authStore.hasPermission('system:ai:manage')">
+      <el-sub-menu index="system" v-if="authStore.hasPermission('system:user:view') || authStore.hasPermission('system:role:view') || authStore.hasPermission('system:organization:view') || authStore.hasPermission('system:ai:manage')">
         <template #title>
           <el-icon><Setting /></el-icon>
           <span>系统管理</span>
         </template>
         <el-menu-item index="/system/users" v-if="authStore.hasPermission('system:user:view')">用户管理</el-menu-item>
         <el-menu-item index="/system/roles" v-if="authStore.hasPermission('system:role:view')">角色权限</el-menu-item>
+        <el-menu-item index="/system/organizations" v-if="authStore.hasPermission('system:organization:view')">组织机构管理</el-menu-item>
         <el-menu-item index="/system/ai-settings" v-if="authStore.hasPermission('system:ai:manage')">AI 设置</el-menu-item>
       </el-sub-menu>
     </el-menu>

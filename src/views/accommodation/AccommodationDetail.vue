@@ -114,7 +114,7 @@ function formatValue(key) {
       : ''
   }
   if (field.type === 'signature') return value ? '已签字' : ''
-  if (['select', 'radio', 'checkbox'].includes(field.type)) return getOptionLabel(key, value)
+  if (['select', 'radio', 'checkbox', 'industry'].includes(field.type)) return getOptionLabel(key, value)
   if (Array.isArray(value)) return value.join('、')
   return value
 }

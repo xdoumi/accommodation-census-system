@@ -43,7 +43,7 @@
 </template>
 
 <script setup>
-import { computed, defineComponent, h, onMounted, reactive, ref } from 'vue'
+import { computed, defineComponent, h, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   ElCheckbox,
@@ -92,6 +92,11 @@ onMounted(async () => {
     sourceDetail.value = detail
     if (detail) Object.assign(form, buildCollectionFormFromUnit(detail))
   }
+})
+
+watch(() => form.economyIndustryCode, value => {
+  const next = inferStarIndustryFlag(value)
+  if (form.isStarIndustryCode !== next) form.isStarIndustryCode = next
 })
 
 function fieldLabel(key) {
@@ -219,7 +224,11 @@ const RadioControl = defineComponent({
   props: ['modelValue', 'field'],
   emits: ['update:modelValue'],
   setup(props, { emit }) {
-    return () => h(ElRadioGroup, { modelValue: props.modelValue, 'onUpdate:modelValue': v => emit('update:modelValue', v) }, () =>
+    return () => h(ElRadioGroup, {
+      modelValue: props.modelValue,
+      disabled: props.field?.code === 'C9',
+      'onUpdate:modelValue': v => emit('update:modelValue', v),
+    }, () =>
       (props.field.options || []).map(opt => h(ElRadio, { label: opt.value }, () => opt.label)),
     )
   },
