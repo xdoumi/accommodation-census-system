@@ -1,1 +1,0 @@
-const o="mobile_submit_context";function l(t,e,n="new"){return`${o}_${t||0}_${e||0}_${n||"new"}`}function r(t,e){localStorage.setItem(t,JSON.stringify({...e,ts:Date.now()}))}function i(t){if(!t)return null;try{return JSON.parse(localStorage.getItem(t)||"null")}catch{return null}}function u(t){if(t)try{localStorage.removeItem(t)}catch{}}export{l as b,u as c,i as l,r as s};

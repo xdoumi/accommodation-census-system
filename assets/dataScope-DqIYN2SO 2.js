@@ -1,1 +1,0 @@
-function t(i,n,e){if(!n)return!1;if(["super_admin","provincial_admin"].includes(n))return!0;switch(n){case"city_admin":return i.cityCode===e;case"county_admin":case"enumerator":return i.countyCode===e;default:return!1}}function u(i,n,e){return["super_admin","provincial_admin"].includes(n)?i:i.filter(r=>t(r,n,e))}export{u as f,t as i};
