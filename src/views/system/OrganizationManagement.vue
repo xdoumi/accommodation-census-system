@@ -6,14 +6,25 @@
           <span class="page-title">组织机构管理</span>
           <p class="page-subtitle">按省厅、市州文旅局、县级文旅局、普查人员四级维护组织，并分配责任人员。</p>
         </div>
-        <el-button
-          type="primary"
-          :icon="Plus"
-          v-if="authStore.hasPermission('system:organization:create')"
-          @click="openCreateDialog()"
-        >
-          新增组织
-        </el-button>
+        <div class="header-actions">
+          <el-button
+            plain
+            type="primary"
+            :icon="UserFilled"
+            v-if="authStore.hasPermission('system:organization:update')"
+            @click="openBulkDialog"
+          >
+            批量分配责任人员
+          </el-button>
+          <el-button
+            type="primary"
+            :icon="Plus"
+            v-if="authStore.hasPermission('system:organization:create')"
+            @click="openCreateDialog()"
+          >
+            新增组织
+          </el-button>
+        </div>
       </div>
     </el-card>
 
@@ -160,13 +171,67 @@
         <el-button type="primary" :loading="submitting" @click="submitForm">保存</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="bulkDialogVisible" title="批量分配责任人员" width="640px">
+      <el-form ref="bulkFormRef" :model="bulkForm" :rules="bulkRules" label-width="110px">
+        <el-form-item label="分配对象" prop="targetType">
+          <el-segmented v-model="bulkForm.targetType" :options="bulkTargetOptions" @change="handleBulkTargetChange" />
+        </el-form-item>
+        <el-form-item :label="bulkAreaLabel" prop="areaCodes">
+          <el-select
+            v-model="bulkForm.areaCodes"
+            multiple
+            filterable
+            collapse-tags
+            collapse-tags-tooltip
+            placeholder="请选择一个或多个区域"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="area in bulkAreaOptions"
+              :key="area.code"
+              :label="areaOptionLabel(area)"
+              :value="area.code"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="责任人员" prop="userIds">
+          <el-select
+            v-model="bulkForm.userIds"
+            multiple
+            filterable
+            collapse-tags
+            collapse-tags-tooltip
+            placeholder="可选择一个或多个责任人员"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="user in bulkUserOptions"
+              :key="user.id"
+              :label="`${user.realName}（${user.username} · ${roleName(user.role)} · ${user.areaName || '-' }）`"
+              :value="user.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-alert
+          type="info"
+          :closable="false"
+          show-icon
+          title="保存后会在对应组织上追加责任人员；如果区域对应组织不存在，系统会自动补齐上级组织和目标组织。"
+        />
+      </el-form>
+      <template #footer>
+        <el-button @click="bulkDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="bulkSubmitting" @click="submitBulkAssign">保存分配</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, UserFilled } from '@element-plus/icons-vue'
 import db from '@/db'
 import { useAuthStore } from '@/stores/auth'
 import { useAreaStore } from '@/stores/area'
@@ -180,8 +245,11 @@ const organizations = ref([])
 const users = ref([])
 const activeOrg = ref(null)
 const dialogVisible = ref(false)
+const bulkDialogVisible = ref(false)
 const submitting = ref(false)
+const bulkSubmitting = ref(false)
 const formRef = ref(null)
+const bulkFormRef = ref(null)
 const form = reactive({
   id: null,
   name: '',
@@ -192,15 +260,36 @@ const form = reactive({
   responsibleUserIds: [],
   status: 'active',
 })
+const bulkForm = reactive({
+  targetType: 'city_admin',
+  areaCodes: [],
+  userIds: [],
+})
 
 const rules = {
   name: [{ required: true, message: '请输入组织名称', trigger: 'blur' }],
 }
+const bulkRules = {
+  targetType: [{ required: true, message: '请选择分配对象', trigger: 'change' }],
+  areaCodes: [{ required: true, type: 'array', min: 1, message: '请选择区域', trigger: 'change' }],
+  userIds: [{ required: true, type: 'array', min: 1, message: '请选择责任人员', trigger: 'change' }],
+}
+const bulkTargetOptions = [
+  { label: '市级管理员', value: 'city_admin' },
+  { label: '县级管理员', value: 'county_admin' },
+  { label: '普查人员', value: 'enumerator' },
+]
 
 const flatRows = computed(() => organizations.value.slice().sort((a, b) => a.level - b.level || a.id - b.id))
 const treeRows = computed(() => buildTree(flatRows.value))
 const parentOptions = computed(() => flatRows.value.filter(item => item.level < 4))
 const areaOptions = computed(() => areaStore.areas.filter(area => [1, 2, 3].includes(area.level)))
+const bulkAreaOptions = computed(() => {
+  if (bulkForm.targetType === 'city_admin') return areaStore.areas.filter(area => area.level === 2)
+  return areaStore.areas.filter(area => area.level === 3)
+})
+const bulkUserOptions = computed(() => users.value.filter(user => user.role === bulkForm.targetType))
+const bulkAreaLabel = computed(() => bulkForm.targetType === 'city_admin' ? '市州' : '区县')
 
 onMounted(loadData)
 
@@ -257,6 +346,20 @@ function openEditDialog(row) {
     status: row.status || 'active',
   })
   dialogVisible.value = true
+}
+
+function openBulkDialog() {
+  Object.assign(bulkForm, {
+    targetType: 'city_admin',
+    areaCodes: [],
+    userIds: [],
+  })
+  bulkDialogVisible.value = true
+}
+
+function handleBulkTargetChange() {
+  bulkForm.areaCodes = []
+  bulkForm.userIds = []
 }
 
 function syncLevelFromParent(parentId) {
@@ -319,6 +422,119 @@ async function deleteOrganization(row) {
   await loadData()
 }
 
+async function submitBulkAssign() {
+  const valid = await bulkFormRef.value?.validate().catch(() => false)
+  if (!valid) return
+  bulkSubmitting.value = true
+  try {
+    const now = new Date().toISOString()
+    let changed = 0
+    for (const areaCode of bulkForm.areaCodes) {
+      const org = await ensureOrganizationForBulkTarget(areaCode, bulkForm.targetType, now)
+      const existingIds = parseIds(org.responsibleUserIds)
+      const mergedIds = Array.from(new Set([...existingIds, ...bulkForm.userIds]))
+      await db.organizations.update(org.id, {
+        responsibleUserIds: JSON.stringify(mergedIds),
+        updatedAt: now,
+      })
+      changed += 1
+    }
+    ElMessage.success(`已为 ${changed} 个区域追加责任人员`)
+    bulkDialogVisible.value = false
+    await loadData()
+  } finally {
+    bulkSubmitting.value = false
+  }
+}
+
+async function ensureOrganizationForBulkTarget(areaCode, targetType, now) {
+  if (targetType === 'city_admin') return ensureCityOrganization(areaCode, now)
+  if (targetType === 'county_admin') return ensureCountyOrganization(areaCode, now)
+  return ensureEnumeratorOrganization(areaCode, now)
+}
+
+async function ensureProvinceOrganization(now) {
+  const existing = organizations.value.find(item => item.level === 1 && item.areaCode === '520000')
+  if (existing) return existing
+  const org = {
+    name: '贵州省文化和旅游厅',
+    parentId: null,
+    level: 1,
+    areaCode: '520000',
+    areaName: '贵州省',
+    responsibleUserIds: '[]',
+    status: 'active',
+    createdAt: now,
+    updatedAt: now,
+  }
+  org.id = await db.organizations.add(org)
+  organizations.value.push(org)
+  return org
+}
+
+async function ensureCityOrganization(cityCode, now) {
+  const existing = organizations.value.find(item => item.level === 2 && item.areaCode === cityCode)
+  if (existing) return existing
+  const parent = await ensureProvinceOrganization(now)
+  const city = areaStore.areas.find(area => area.code === cityCode)
+  const org = {
+    name: `${city?.name || cityCode}文化和旅游局`,
+    parentId: parent.id,
+    level: 2,
+    areaCode: cityCode,
+    areaName: city?.name || cityCode,
+    responsibleUserIds: '[]',
+    status: 'active',
+    createdAt: now,
+    updatedAt: now,
+  }
+  org.id = await db.organizations.add(org)
+  organizations.value.push(org)
+  return org
+}
+
+async function ensureCountyOrganization(countyCode, now) {
+  const existing = organizations.value.find(item => item.level === 3 && item.areaCode === countyCode)
+  if (existing) return existing
+  const county = areaStore.areas.find(area => area.code === countyCode)
+  const parent = await ensureCityOrganization(county?.parentCode || `${String(countyCode).slice(0, 4)}00`, now)
+  const org = {
+    name: `${county?.name || countyCode}文化和旅游局`,
+    parentId: parent.id,
+    level: 3,
+    areaCode: countyCode,
+    areaName: county?.name || countyCode,
+    responsibleUserIds: '[]',
+    status: 'active',
+    createdAt: now,
+    updatedAt: now,
+  }
+  org.id = await db.organizations.add(org)
+  organizations.value.push(org)
+  return org
+}
+
+async function ensureEnumeratorOrganization(countyCode, now) {
+  const countyOrg = await ensureCountyOrganization(countyCode, now)
+  const existing = organizations.value.find(item => item.level === 4 && item.parentId === countyOrg.id && item.areaCode === countyCode)
+  if (existing) return existing
+  const county = areaStore.areas.find(area => area.code === countyCode)
+  const org = {
+    name: `${county?.name || countyCode}普查人员`,
+    parentId: countyOrg.id,
+    level: 4,
+    areaCode: countyCode,
+    areaName: county?.name || countyCode,
+    responsibleUserIds: '[]',
+    status: 'active',
+    createdAt: now,
+    updatedAt: now,
+  }
+  org.id = await db.organizations.add(org)
+  organizations.value.push(org)
+  return org
+}
+
 function canCreateChild(row) {
   return authStore.hasPermission('system:organization:create') && Number(row.level || 1) < 4
 }
@@ -339,6 +555,12 @@ function parentName(parentId) {
 
 function roleName(role) {
   return getRoleLabel(role)
+}
+
+function areaOptionLabel(area) {
+  if (area.level !== 3) return area.name
+  const cityName = areaStore.getAreaName(area.parentCode)
+  return cityName ? `${cityName} / ${area.name}` : area.name
 }
 
 function levelTagType(level) {
@@ -373,11 +595,17 @@ function levelTagType(level) {
 }
 
 .card-header,
-.card-actions {
+.card-actions,
+.header-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+
+.header-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 .tree-node {

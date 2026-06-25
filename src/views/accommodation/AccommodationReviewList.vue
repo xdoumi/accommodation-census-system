@@ -150,7 +150,6 @@ async function loadRows() {
     const taskById = new Map(tasks.map(item => [item.id, item]))
     await syncAvailableRecords(records)
     rows.value = records
-      .filter(record => record.status !== 'draft')
       .map(record => decorateRecord(record, assignmentById.get(record.assignmentId), taskById.get(record.taskId)))
       .filter(row => inReviewScope(row))
       .filter(matchesFilters)
