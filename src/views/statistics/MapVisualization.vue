@@ -8,8 +8,8 @@
             <el-radio-button label="count">单位数量</el-radio-button>
             <el-radio-button label="rooms">客房总数</el-radio-button>
           </el-radio-group>
-          <el-select v-model="selectedCategory" placeholder="全部类别" clearable style="width: 140px;" @change="recompute">
-            <el-option v-for="opt in CATEGORY_OPTIONS" :key="opt.value" :label="opt.label" :value="opt.value" />
+          <el-select v-model="selectedRating" placeholder="全部等级" clearable style="width: 160px;" @change="recompute">
+            <el-option v-for="opt in ratingOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
           </el-select>
         </div>
       </div>
@@ -44,21 +44,22 @@ import { useStatisticsStore } from '@/stores/statistics'
 import { useAreaStore } from '@/stores/area'
 import { useAuthStore } from '@/stores/auth'
 import db from '@/db'
-import { CATEGORY_OPTIONS } from '@/utils/constants'
 import { filterByScope } from '@/utils/dataScope'
+import { COLLECTION_FIELD_MAP } from '@/utils/collectionSpec'
 import GeoMapChart from '@/components/charts/GeoMapChart.vue'
 
 const statisticsStore = useStatisticsStore()
 const areaStore = useAreaStore()
 const authStore = useAuthStore()
 
-const selectedCategory = ref('')
+const selectedRating = ref('')
 const metric = ref('count')
 const activeRegion = ref('')          // 当前钻取的市名（中文）
 const allAccommodations = ref([])     // 已经做过权限过滤
 const regionStats = ref([])           // 市级聚合
 const countyStatsByCity = ref({})     // 钻取用：cityName -> 区县统计列表
 const mapData = ref([])
+const ratingOptions = COLLECTION_FIELD_MAP.ratingLevel.options
 
 async function loadData() {
   await areaStore.fetchAreas()
@@ -91,8 +92,8 @@ function buildStats(list, groupBy /* 'city' | 'county' */) {
 
 function recompute() {
   let list = allAccommodations.value
-  if (selectedCategory.value) {
-    list = list.filter(a => a.category === selectedCategory.value)
+  if (selectedRating.value) {
+    list = list.filter(a => a.ratingLevel === selectedRating.value)
   }
 
   // 市级聚合
@@ -112,7 +113,7 @@ function recompute() {
       const sample = list.find(a => a.cityCode === r.code && a.longitude && a.latitude)
       if (!sample) return null
       const val = r[metric.value] ?? 0
-      return { name: r.name, value: [sample.longitude, sample.latitude, val] }
+      return { name: r.name, value: [sample.longitude, sample.latitude, val], category: sample.ratingLevel }
     })
     .filter(Boolean)
 }

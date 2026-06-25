@@ -3,6 +3,18 @@
     <div style="padding: 12px 12px 0;">
       <input v-model="keyword" class="m-input" placeholder="搜索单位名称、信用代码或地址" />
     </div>
+    <div class="status-filter">
+      <button
+        v-for="item in statusFilterOptions"
+        :key="item.value"
+        type="button"
+        class="status-chip"
+        :class="{ active: statusFilter === item.value }"
+        @click="statusFilter = item.value"
+      >
+        {{ item.label }}
+      </button>
+    </div>
 
     <div style="padding: 0 12px; margin-top: 8px;">
       <div v-if="filteredRecords.length === 0" style="text-align: center; color: #909399; padding: 40px 0;">
@@ -51,11 +63,19 @@ import StatusTag from '@/components/common/StatusTag.vue'
 const router = useRouter()
 const censusStore = useCensusStore()
 const keyword = ref('')
+const statusFilter = ref('all')
 const records = ref([])
+const statusFilterOptions = [
+  { value: 'all', label: '全部状态' },
+  ...CENSUS_RECORD_STATUS_OPTIONS.map(item => ({ value: item.value, label: item.label })),
+]
 
 const filteredRecords = computed(() => {
   const kw = keyword.value.trim().toLowerCase()
   let list = records.value
+  if (statusFilter.value !== 'all') {
+    list = list.filter(record => record.status === statusFilter.value)
+  }
   if (kw) {
     list = list.filter(record => [
       record.unitName,
@@ -140,6 +160,30 @@ async function deleteRecord(record) {
 </script>
 
 <style lang="scss" scoped>
+.status-filter {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 10px 12px 2px;
+}
+
+.status-chip {
+  min-height: 34px;
+  padding: 0 13px;
+  border: 1px solid #dfe6f0;
+  border-radius: 999px;
+  background: #fff;
+  color: #606266;
+  font-size: 12px;
+  white-space: nowrap;
+
+  &.active {
+    color: #fff;
+    background: #1a5fc5;
+    border-color: #1a5fc5;
+  }
+}
+
 .record-card {
   margin: 8px 0;
   padding: 14px;

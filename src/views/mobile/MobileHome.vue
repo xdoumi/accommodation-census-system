@@ -59,7 +59,11 @@
       <div class="m-grid-entry" style="padding: 0;">
         <div class="m-grid-item" @click="router.push('/m/tasks')">
           <div class="m-grid-icon" style="background: #e8f0fa; color: #1a5fc5;"><el-icon :size="22"><Edit /></el-icon></div>
-          <span class="m-grid-text">开始填报</span>
+          <span class="m-grid-text">任务填报</span>
+        </div>
+        <div class="m-grid-item" @click="router.push('/m/entry/0/0?mode=new')">
+          <div class="m-grid-icon" style="background: #fff6e8; color: #c77a12;"><el-icon :size="22"><Plus /></el-icon></div>
+          <span class="m-grid-text">新增填报</span>
         </div>
         <div class="m-grid-item" @click="router.push('/m/units')">
           <div class="m-grid-icon" style="background: #eefaf1; color: #2f8f4e;"><el-icon :size="22"><OfficeBuilding /></el-icon></div>
@@ -79,6 +83,7 @@ import { useStatisticsStore } from '@/stores/statistics'
 import { getRoleLabel } from '@/utils/constants'
 import { storeToRefs } from 'pinia'
 import db from '@/db'
+import { Plus } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const authStore = useAuthStore()

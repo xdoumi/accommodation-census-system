@@ -30,10 +30,11 @@
         <el-table-column prop="createdAt" label="创建时间" width="160" align="center">
           <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="240" align="center" fixed="right">
+        <el-table-column label="操作" width="300" align="center" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="router.push(`/census/${row.id}`)">查看</el-button>
             <el-button link type="primary" size="small" @click="router.push(`/census/${row.id}/edit`)" v-if="row.status === 'draft' && authStore.hasPermission('census:update')">编辑</el-button>
+            <el-button link type="success" size="small" @click="handleComplete(row)" v-if="row.status !== 'completed' && authStore.hasPermission('census:update')">结束</el-button>
             <el-button link type="danger" size="small" @click="handleDelete(row)" v-if="row.status === 'draft' && authStore.hasPermission('census:delete')">删除</el-button>
           </template>
         </el-table-column>
@@ -50,6 +51,7 @@ import { useAuthStore } from '@/stores/auth'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CENSUS_TASK_STATUS_OPTIONS } from '@/utils/constants'
 import { formatDate, formatDateTime } from '@/utils/formatters'
+import { normalizeRecordStatus } from '@/utils/reviewFlow'
 import StatusTag from '@/components/common/StatusTag.vue'
 import db from '@/db'
 import { useAreaStore } from '@/stores/area'
@@ -97,5 +99,70 @@ async function handleDelete(task) {
       ElMessage.error(error.message || '删除失败')
     }
   }
+}
+
+async function handleComplete(task) {
+  try {
+    const check = await validateTaskCanComplete(task.id)
+    if (!check.ok) {
+      ElMessage.warning(check.message)
+      return
+    }
+    await ElMessageBox.confirm(`确定结束主任务「${task.title}」吗？结束后任务状态将变为已完成。`, '结束任务', { type: 'warning' })
+    await store.completeTask(task.id)
+    ElMessage.success('任务已结束')
+    await store.fetchTasks()
+    await loadSubTaskCounts()
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error(error.message || '结束失败')
+    }
+  }
+}
+
+async function validateTaskCanComplete(taskId) {
+  const subTasks = await db.censusTasks.where('parentTaskId').equals(Number(taskId)).toArray()
+  if (!subTasks.length) return { ok: false, message: '当前主任务还没有子任务，不能结束' }
+
+  const subTaskIds = subTasks.map(item => item.id)
+  const assignments = []
+  for (const subTaskId of subTaskIds) {
+    assignments.push(...await db.censusAssignments.where('taskId').equals(Number(subTaskId)).toArray())
+  }
+  if (!assignments.length) return { ok: false, message: '当前主任务还没有分派单位，不能结束' }
+
+  const assignmentIds = assignments.map(item => item.id)
+  const records = []
+  for (const assignmentId of assignmentIds) {
+    records.push(...await db.censusRecords.where('assignmentId').equals(Number(assignmentId)).toArray())
+  }
+  const availableRecords = records.filter(record => normalizeRecordStatus(record.status) === 'available')
+  const availableByUnit = new Set(availableRecords.map(record => Number(record.accommodationId)).filter(Boolean))
+  const availableByCreditCode = new Set(availableRecords.map(record => record.creditCode).filter(Boolean))
+  let expectedCount = 0
+  let unfinishedUnits = 0
+
+  for (const assignment of assignments) {
+    const ids = parseArray(assignment.targetAccommodationIds).map(Number).filter(Boolean)
+    expectedCount += ids.length
+    for (const id of ids) {
+      const unit = await db.accommodations.get(id)
+      const isDone = availableByUnit.has(id) || (unit?.creditCode && availableByCreditCode.has(unit.creditCode))
+      if (!isDone) unfinishedUnits += 1
+    }
+  }
+
+  const unfinishedRecords = records.filter(record => normalizeRecordStatus(record.status) !== 'available').length
+  if (expectedCount > 0 && unfinishedUnits > 0) {
+    return { ok: false, message: `还有 ${unfinishedUnits} 个任务单位未完成省级审核，不能结束任务` }
+  }
+  if (unfinishedRecords > 0) {
+    return { ok: false, message: `还有 ${unfinishedRecords} 条普查记录未完成审核，不能结束任务` }
+  }
+  return { ok: true }
+}
+
+function parseArray(raw) {
+  try { return Array.isArray(raw) ? raw : JSON.parse(raw || '[]') } catch { return [] }
 }
 </script>

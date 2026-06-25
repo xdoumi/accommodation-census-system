@@ -30,10 +30,10 @@ let geoReady = false
 async function ensureGeo() {
   if (geoReady) return true
   try {
-    const resp = await fetch('/geo/yunnan.json')
+    const resp = await fetch(`${import.meta.env.BASE_URL}geo/guizhou.json`)
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
     const geoJson = await resp.json()
-    echarts.registerMap('yunnan', geoJson)
+    echarts.registerMap('guizhou', geoJson)
     geoReady = true
     error.value = ''
     return true
@@ -89,7 +89,7 @@ async function renderChart() {
       chart.setOption({
         ...baseOption,
         geo: {
-          map: 'yunnan',
+          map: 'guizhou',
           roam: true,
           label: { show: true, fontSize: 10, color: '#1a1a1a' },
           itemStyle: { areaColor: '#f4f7fb', borderColor: '#a8c0e2' },

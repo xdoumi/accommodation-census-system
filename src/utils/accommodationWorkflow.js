@@ -41,12 +41,6 @@ export function formatCollectionValue(key, field, value, form = {}) {
 export function getFullCollectionExportColumns(areaName = code => code) {
   const baseColumns = [
     { key: 'displayName', title: '单位名称', width: 24 },
-    { key: 'cityCode', title: '市州', width: 16, formatter: value => areaName(value) || value },
-    { key: 'countyCode', title: '区县', width: 16, formatter: value => areaName(value) || value },
-    { key: 'displayStatus', title: '当前经营状态', width: 16 },
-    { key: 'displayAddress', title: '实际经营地址', width: 32 },
-    { key: 'displaySource', title: '来源', width: 16 },
-    { key: 'displayCheckType', title: '核查类型', width: 18 },
     { key: 'displayDataUpdatedAt', title: '数据更新日期', width: 20 },
   ]
   const fieldColumns = COLLECTION_MODULES

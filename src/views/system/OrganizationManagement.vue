@@ -39,7 +39,7 @@
         <el-tree
           :data="treeRows"
           node-key="id"
-          default-expand-all
+          :default-expanded-keys="organizationDefaultExpandedKeys"
           highlight-current
           :props="{ label: 'name', children: 'children' }"
           @node-click="selectOrganization"
@@ -179,6 +179,7 @@
         </el-form-item>
         <el-form-item :label="bulkAreaLabel" prop="areaCodes">
           <el-select
+            v-if="bulkForm.targetType === 'city_admin'"
             v-model="bulkForm.areaCodes"
             multiple
             filterable
@@ -194,6 +195,18 @@
               :value="area.code"
             />
           </el-select>
+          <div v-else class="bulk-area-tree">
+            <el-tree
+              ref="bulkAreaTreeRef"
+              :data="bulkCountyTreeData"
+              node-key="code"
+              show-checkbox
+              :check-strictly="false"
+              :default-expanded-keys="['520000']"
+              :props="{ label: 'name', children: 'children' }"
+              @check="handleBulkAreaTreeCheck"
+            />
+          </div>
         </el-form-item>
         <el-form-item label="责任人员" prop="userIds">
           <el-select
@@ -229,7 +242,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, UserFilled } from '@element-plus/icons-vue'
 import db from '@/db'
@@ -250,6 +263,7 @@ const submitting = ref(false)
 const bulkSubmitting = ref(false)
 const formRef = ref(null)
 const bulkFormRef = ref(null)
+const bulkAreaTreeRef = ref(null)
 const form = reactive({
   id: null,
   name: '',
@@ -282,12 +296,14 @@ const bulkTargetOptions = [
 
 const flatRows = computed(() => organizations.value.slice().sort((a, b) => a.level - b.level || a.id - b.id))
 const treeRows = computed(() => buildTree(flatRows.value))
+const organizationDefaultExpandedKeys = computed(() => flatRows.value.filter(item => Number(item.level) <= 2).map(item => item.id))
 const parentOptions = computed(() => flatRows.value.filter(item => item.level < 4))
 const areaOptions = computed(() => areaStore.areas.filter(area => [1, 2, 3].includes(area.level)))
 const bulkAreaOptions = computed(() => {
   if (bulkForm.targetType === 'city_admin') return areaStore.areas.filter(area => area.level === 2)
   return areaStore.areas.filter(area => area.level === 3)
 })
+const bulkCountyTreeData = computed(() => areaStore.areaTree)
 const bulkUserOptions = computed(() => users.value.filter(user => user.role === bulkForm.targetType))
 const bulkAreaLabel = computed(() => bulkForm.targetType === 'city_admin' ? '市州' : '区县')
 
@@ -355,11 +371,18 @@ function openBulkDialog() {
     userIds: [],
   })
   bulkDialogVisible.value = true
+  nextTick(() => bulkAreaTreeRef.value?.setCheckedKeys([]))
 }
 
 function handleBulkTargetChange() {
   bulkForm.areaCodes = []
   bulkForm.userIds = []
+  nextTick(() => bulkAreaTreeRef.value?.setCheckedKeys([]))
+}
+
+function handleBulkAreaTreeCheck() {
+  const keys = bulkAreaTreeRef.value?.getCheckedKeys(false) || []
+  bulkForm.areaCodes = normalizeBulkAreaCodes(keys)
 }
 
 function syncLevelFromParent(parentId) {
@@ -445,6 +468,21 @@ async function submitBulkAssign() {
   } finally {
     bulkSubmitting.value = false
   }
+}
+
+function normalizeBulkAreaCodes(keys = []) {
+  const codes = new Set()
+  keys.forEach(code => {
+    const area = areaStore.getAreaByCode(code)
+    if (area?.level === 1 || code === '520000') {
+      areaStore.areas.filter(item => item.level === 3).forEach(item => codes.add(item.code))
+    } else if (area?.level === 2) {
+      areaStore.getCountiesByCity(code).forEach(item => codes.add(item.code))
+    } else if (area?.level === 3) {
+      codes.add(code)
+    }
+  })
+  return areaStore.areas.filter(area => area.level === 3 && codes.has(area.code)).map(area => area.code)
 }
 
 async function ensureOrganizationForBulkTarget(areaCode, targetType, now) {
@@ -615,6 +653,16 @@ function levelTagType(level) {
   justify-content: space-between;
   gap: 8px;
   padding-right: 8px;
+}
+
+.bulk-area-tree {
+  width: 100%;
+  max-height: 320px;
+  overflow: auto;
+  padding: 8px 10px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  background: #fff;
 }
 
 @media (max-width: 1100px) {
