@@ -58,9 +58,10 @@
         <el-table-column label="操作" width="260" align="center" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="openRecord(row)">查看</el-button>
+            <el-button v-if="canEditReviewRecord(row)" link type="primary" size="small" @click="editRecord(row)">编辑</el-button>
             <el-button v-if="canCurrentUserReview(row)" link type="success" size="small" @click="reviewRecord(row, 'approve')">{{ currentReviewStep?.approveText || '通过' }}</el-button>
             <el-button v-if="canCurrentUserReview(row)" link type="danger" size="small" @click="reviewRecord(row, 'reject')">{{ currentReviewStep?.rejectText || '驳回' }}</el-button>
-            <el-button link type="danger" size="small" @click="deleteRecord(row)">删除</el-button>
+            <el-button v-if="row.status !== 'available'" link type="danger" size="small" @click="deleteRecord(row)">删除</el-button>
           </template>
         </el-table-column>
       </DataTable>
@@ -95,6 +96,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { RefreshLeft, Search } from '@element-plus/icons-vue'
 import db from '@/db'
@@ -110,6 +112,7 @@ import StatusTag from '@/components/common/StatusTag.vue'
 
 const authStore = useAuthStore()
 const areaStore = useAreaStore()
+const router = useRouter()
 
 const loading = ref(false)
 const rows = ref([])
@@ -222,6 +225,14 @@ function handlePageChange({ page, pageSize }) {
 function openRecord(row) {
   activeRow.value = row
   drawerVisible.value = true
+}
+
+function canEditReviewRecord(row) {
+  return row?.status && row.status !== 'draft' && row.status !== 'available'
+}
+
+function editRecord(row) {
+  router.push(`/census/${row.taskId}/entry?assignmentId=${row.assignmentId || ''}&recordId=${row.id}`)
 }
 
 function canCurrentUserReview(row) {

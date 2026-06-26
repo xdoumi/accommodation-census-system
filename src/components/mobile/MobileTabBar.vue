@@ -17,28 +17,20 @@
 <script setup>
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useCensusStore } from '@/stores/census'
-import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
 const router = useRouter()
-const censusStore = useCensusStore()
-const authStore = useAuthStore()
 
 const tabs = computed(() => [
   { path: '/m/home', label: '首页', icon: 'HomeFilled' },
-  { path: '/m/tasks', label: '任务', icon: 'List', badge: pendingCount.value || null },
-  { path: '/m/units', label: '清单', icon: 'OfficeBuilding' },
+  { path: '/m/entry/0/0?mode=new', match: '/m/entry/0/0', label: '新增填报', icon: 'Plus' },
   { path: '/m/profile', label: '我的', icon: 'UserFilled' },
 ])
 
-const pendingCount = computed(() => {
-  if (!censusStore.assignments.length) return 0
-  return censusStore.assignments.filter(a => ['pending', 'in_progress'].includes(a.status)).length
-})
-
 function isActive(path) {
-  return route.path === path || route.path.startsWith(path + '/')
+  const tab = tabs.value.find(item => item.path === path)
+  const matchPath = tab?.match || path
+  return route.path === matchPath || route.path.startsWith(matchPath + '/')
 }
 
 function handleTab(tab) {

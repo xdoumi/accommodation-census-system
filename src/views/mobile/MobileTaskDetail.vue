@@ -27,6 +27,30 @@
             新增
           </el-button>
         </div>
+        <div class="filter-row">
+          <button
+            v-for="item in checkTypeFilterOptions"
+            :key="item.value"
+            type="button"
+            class="filter-chip"
+            :class="{ active: checkTypeFilter === item.value }"
+            @click="checkTypeFilter = item.value"
+          >
+            {{ item.label }}
+          </button>
+        </div>
+        <div class="filter-row">
+          <button
+            v-for="item in statusFilterOptions"
+            :key="item.value"
+            type="button"
+            class="filter-chip"
+            :class="{ active: statusFilter === item.value }"
+            @click="statusFilter = item.value"
+          >
+            {{ item.label }}
+          </button>
+        </div>
 
         <div v-if="filteredUnits.length === 0" class="empty-panel">
           <el-icon :size="48" color="#dcdfe6"><OfficeBuilding /></el-icon>
@@ -82,17 +106,35 @@ const authStore = useAuthStore()
 const task = ref(null)
 const loading = ref(true)
 const keyword = ref('')
+const checkTypeFilter = ref('all')
+const statusFilter = ref('all')
 const taskUnits = ref([])
+const checkTypeFilterOptions = [
+  { value: 'all', label: '全部类型' },
+  { value: 'catalog_spot_check', label: '抽查' },
+  { value: 'imported_catalog', label: '核查' },
+  { value: 'new_catalog', label: '新增' },
+]
 
 const statusOptions = computed(() => [
   ...CENSUS_RECORD_STATUS_OPTIONS,
   { value: 'draft_placeholder', label: '未填报', type: 'info' },
 ])
+const statusFilterOptions = computed(() => [
+  { value: 'all', label: '全部状态' },
+  { value: 'draft_placeholder', label: '未填报' },
+  ...CENSUS_RECORD_STATUS_OPTIONS.map(item => ({ value: item.value, label: item.label })),
+])
 
 const filteredUnits = computed(() => {
   const kw = keyword.value.trim().toLowerCase()
-  if (!kw) return taskUnits.value
-  return taskUnits.value.filter(item => String(item.name || '').toLowerCase().includes(kw))
+  return taskUnits.value.filter(item => {
+    if (kw && !String(item.name || '').toLowerCase().includes(kw)) return false
+    if (checkTypeFilter.value !== 'all' && item.checkType !== checkTypeFilter.value) return false
+    const status = item.recordStatus || 'draft_placeholder'
+    if (statusFilter.value !== 'all' && status !== statusFilter.value) return false
+    return true
+  })
 })
 
 const showAddButton = computed(() => {
@@ -211,6 +253,30 @@ async function resolveAssignmentIdForCreate() {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.filter-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-top: 10px;
+}
+
+.filter-chip {
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid #dfe6f0;
+  background: #fff;
+  color: #606266;
+  font-size: 12px;
+  white-space: nowrap;
+
+  &.active {
+    color: #fff;
+    background: #1a5fc5;
+    border-color: #1a5fc5;
+  }
 }
 
 .empty-panel {

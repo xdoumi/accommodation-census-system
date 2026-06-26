@@ -7,6 +7,7 @@
       <div class="kpi-info">
         <div class="kpi-value">{{ displayValue }}</div>
         <div class="kpi-label">{{ label }}</div>
+        <div v-if="secondaryLabel" class="kpi-secondary">{{ secondaryLabel }}：{{ secondaryDisplayValue }}</div>
       </div>
       <div class="kpi-trend" v-if="trend">
         <span :class="trend === 'up' ? 'trend-up' : 'trend-down'">
@@ -30,6 +31,8 @@ const props = defineProps({
   trend: { type: String, default: null },
   trendValue: { type: String, default: '' },
   formatter: { type: String, default: 'number' },
+  secondaryLabel: { type: String, default: '' },
+  secondaryValue: { type: [Number, String], default: 0 },
 })
 
 const displayValue = computed(() => {
@@ -37,6 +40,8 @@ const displayValue = computed(() => {
   if (props.formatter === 'currency') return '¥' + formatNumber(props.value)
   return formatNumber(props.value)
 })
+
+const secondaryDisplayValue = computed(() => formatNumber(props.secondaryValue))
 </script>
 
 <style lang="scss" scoped>
@@ -72,6 +77,13 @@ const displayValue = computed(() => {
     font-size: 13px;
     color: #909399;
     margin-top: 4px;
+  }
+
+  .kpi-secondary {
+    margin-top: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #1a5fc5;
   }
 
   .kpi-trend {

@@ -26,13 +26,13 @@
         <KpiCard icon="OfficeBuilding" :value="data.totalUnits" label="住宿单位总数" color="#409eff" />
       </el-col>
       <el-col :span="6">
-        <KpiCard icon="Search" :value="data.spotCheckUnits" label="抽查单位数" color="#67c23a" />
+        <KpiCard icon="Search" :value="data.spotCheckUnits" label="抽查单位数" color="#67c23a" secondary-label="实际抽查数" :secondary-value="data.actualSpotCheckUnits" />
       </el-col>
       <el-col :span="6">
-        <KpiCard icon="DocumentChecked" :value="data.importedCheckUnits" label="核查单位数" color="#e6a23c" />
+        <KpiCard icon="DocumentChecked" :value="data.importedCheckUnits" label="核查单位数" color="#e6a23c" secondary-label="实际核查数" :secondary-value="data.actualImportedCheckUnits" />
       </el-col>
       <el-col :span="6">
-        <KpiCard icon="Plus" :value="data.newUnits" label="新增单位数" color="#f56c6c" />
+        <KpiCard icon="Plus" :value="data.newUnits" label="新增单位数" color="#f56c6c" secondary-label="实际新增数" :secondary-value="data.actualNewUnits" />
       </el-col>
     </el-row>
 
@@ -41,13 +41,13 @@
         <el-card shadow="never" class="progress-card">
           <template #header>
             <div class="progress-header">
-              <span>任务执行进度</span>
-              <el-button link type="primary" @click="router.push('/census')">查看任务</el-button>
+              <span>核查任务执行进度</span>
+              <el-button link type="primary" @click="router.push({ path: '/census', query: { taskType: 'sub' } })">查看任务</el-button>
             </div>
           </template>
           <div class="progress-main">
             <strong>{{ executionProgress }}%</strong>
-            <span>任务数量 {{ scopedAssignments.length }}，完成 {{ completedAssignments }}</span>
+            <span>任务数量 {{ importedReviewTaskCount }}，完成 {{ completedImportedReviewCount }}</span>
           </div>
           <el-progress :percentage="executionProgress" :stroke-width="10" />
         </el-card>
@@ -110,6 +110,7 @@ import { useAiSettingsStore } from '@/stores/aiSettings'
 import { storeToRefs } from 'pinia'
 import { CENSUS_TASK_STATUS_OPTIONS, getRoleLabel } from '@/utils/constants'
 import { formatDate } from '@/utils/formatters'
+import { normalizeRecordStatus } from '@/utils/reviewFlow'
 import KpiCard from '@/components/charts/KpiCard.vue'
 import StatusTag from '@/components/common/StatusTag.vue'
 import AiNlQueryBox from '@/components/ai/AiNlQueryBox.vue'
@@ -137,9 +138,11 @@ const currentDate = computed(() => {
   const d = new Date()
   return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`
 })
-const completedAssignments = computed(() => scopedAssignments.value.filter(item => ['submitted', 'reviewed', 'completed'].includes(item.status) || Number(item.progress) >= 100).length)
-const executionProgress = computed(() => scopedAssignments.value.length
-  ? Math.round(scopedAssignments.value.reduce((sum, item) => sum + Number(item.progress || 0), 0) / scopedAssignments.value.length)
+const importedReviewRecords = computed(() => scopedRecords.value.filter(item => getRecordCheckType(item) === 'imported_catalog' && hasEnteredReview(item.status)))
+const importedReviewTaskCount = computed(() => importedReviewRecords.value.length)
+const completedImportedReviewCount = computed(() => importedReviewRecords.value.filter(item => item.status === 'available' || item.status === 'approved').length)
+const executionProgress = computed(() => importedReviewTaskCount.value
+  ? Math.round(completedImportedReviewCount.value / importedReviewTaskCount.value * 100)
   : 0)
 const reviewStages = computed(() => [
   buildReviewStage('county', '县级审核', '#1a5fc5'),
@@ -165,7 +168,16 @@ async function loadScopedRecords() {
   const allRecords = await db.censusRecords.toArray()
   scopedRecords.value = allRecords
     .filter(item => item.status !== 'draft' && assignmentIds.has(item.assignmentId))
-    .map(item => ({ ...item, assignment: assignmentMap.get(item.assignmentId) }))
+    .map(item => ({ ...item, status: normalizeRecordStatus(item.status), assignment: assignmentMap.get(item.assignmentId) }))
+}
+
+function hasEnteredReview(status) {
+  return status && !['draft', 'county_rejected', 'city_rejected', 'province_rejected'].includes(status)
+}
+
+function getRecordCheckType(record) {
+  if (record.checkType) return record.checkType
+  try { return JSON.parse(record.formData || '{}').checkType || '' } catch { return '' }
 }
 
 function buildReviewStage(key, label, color) {

@@ -4,6 +4,7 @@ import db from '@/db'
 import { useAuthStore } from './auth'
 import { filterByScope } from '@/utils/dataScope'
 import { getOptionLabel } from '@/utils/collectionSpec'
+import { normalizeRecordStatus } from '@/utils/reviewFlow'
 
 export const useStatisticsStore = defineStore('statistics', () => {
   const dashboardData = ref({
@@ -11,6 +12,9 @@ export const useStatisticsStore = defineStore('statistics', () => {
     spotCheckUnits: 0,
     importedCheckUnits: 0,
     newUnits: 0,
+    actualSpotCheckUnits: 0,
+    actualImportedCheckUnits: 0,
+    actualNewUnits: 0,
     ratingBreakdown: [],
     sourceBreakdown: [],
     checkTypeBreakdown: [],
@@ -30,6 +34,7 @@ export const useStatisticsStore = defineStore('statistics', () => {
     try {
       const auth = useAuthStore()
       const allRaw = await db.accommodations.toArray()
+      const allRecords = await db.censusRecords.toArray()
       const allUnitsFull = allRaw.filter(item => !item.deletedAt)
       // 区域范围过滤（统一走 dataScope）
       const allAccommodations = filterByScope(allUnitsFull, auth.userRole, auth.userAreaCode)
@@ -73,12 +78,16 @@ export const useStatisticsStore = defineStore('statistics', () => {
         countyPointMap[a.countyCode].value[2]++
       })
       const mapPointsAggregated = Object.values(countyPointMap)
+      const availableRecords = allRecords.filter(record => normalizeRecordStatus(record.status) === 'available')
 
       dashboardData.value = {
         totalUnits: allUnitsFull.length,
         spotCheckUnits: allUnitsFull.filter(item => item.checkType === 'catalog_spot_check').length,
         importedCheckUnits: allUnitsFull.filter(item => item.checkType === 'imported_catalog').length,
         newUnits: allUnitsFull.filter(item => item.checkType === 'new_catalog').length,
+        actualSpotCheckUnits: availableRecords.filter(item => getRecordCheckType(item) === 'catalog_spot_check').length,
+        actualImportedCheckUnits: availableRecords.filter(item => getRecordCheckType(item) === 'imported_catalog').length,
+        actualNewUnits: availableRecords.filter(item => getRecordCheckType(item) === 'new_catalog').length,
         ratingBreakdown,
         sourceBreakdown,
         checkTypeBreakdown,
@@ -107,4 +116,9 @@ function industryName(value) {
   const label = getOptionLabel('economyIndustryCode', value)
   if (!label) return '未填写'
   return label.replace(/^\d+\*?/, '') || label
+}
+
+function getRecordCheckType(record) {
+  if (record.checkType) return record.checkType
+  try { return JSON.parse(record.formData || '{}').checkType || '' } catch { return '' }
 }

@@ -2,14 +2,14 @@
   <div class="page-container">
     <el-card shadow="never">
       <div class="page-header">
-        <span class="page-title">普查任务列表</span>
-        <el-button type="primary" @click="router.push('/census/create')" v-if="authStore.hasPermission('census:create')">
+        <span class="page-title">{{ isSubTaskMode ? '子任务列表' : '普查任务列表' }}</span>
+        <el-button type="primary" @click="router.push('/census/create')" v-if="!isSubTaskMode && authStore.hasPermission('census:create')">
           <el-icon><Plus /></el-icon>创建任务
         </el-button>
       </div>
 
       <el-table :data="store.tasks" v-loading="store.taskLoading" stripe border>
-        <el-table-column prop="title" label="主任务名称" min-width="220" show-overflow-tooltip />
+        <el-table-column prop="title" :label="isSubTaskMode ? '子任务名称' : '主任务名称'" min-width="220" show-overflow-tooltip />
         <el-table-column prop="status" label="状态" width="100" align="center">
           <template #default="{ row }">
             <StatusTag :value="row.status" :options="CENSUS_TASK_STATUS_OPTIONS" />
@@ -21,11 +21,23 @@
         <el-table-column prop="startDate" label="开始日期" width="120" align="center">
           <template #default="{ row }">{{ formatDate(row.startDate) || '-' }}</template>
         </el-table-column>
-        <el-table-column label="任务范围" min-width="160" show-overflow-tooltip>
+        <el-table-column v-if="!isSubTaskMode" label="任务范围" min-width="160" show-overflow-tooltip>
           <template #default="{ row }">{{ formatScope(row) }}</template>
         </el-table-column>
-        <el-table-column label="子任务" width="90" align="center">
+        <el-table-column v-if="!isSubTaskMode" label="子任务" width="90" align="center">
           <template #default="{ row }">{{ subTaskCount(row.id) }}个</template>
+        </el-table-column>
+        <el-table-column v-if="isSubTaskMode" label="填报中核查" width="120" align="center">
+          <template #default="{ row }">{{ taskRecordStats(row.id).importedInReview }}</template>
+        </el-table-column>
+        <el-table-column v-if="isSubTaskMode" label="填报中抽查" width="120" align="center">
+          <template #default="{ row }">{{ taskRecordStats(row.id).spotInReview }}</template>
+        </el-table-column>
+        <el-table-column v-if="isSubTaskMode" label="实际抽查" width="110" align="center">
+          <template #default="{ row }">{{ taskRecordStats(row.id).actualSpot }}</template>
+        </el-table-column>
+        <el-table-column v-if="isSubTaskMode" label="实核查" width="100" align="center">
+          <template #default="{ row }">{{ taskRecordStats(row.id).actualImported }}</template>
         </el-table-column>
         <el-table-column prop="createdAt" label="创建时间" width="160" align="center">
           <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
@@ -44,8 +56,8 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useCensusStore } from '@/stores/census'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -57,16 +69,30 @@ import db from '@/db'
 import { useAreaStore } from '@/stores/area'
 
 const router = useRouter()
+const route = useRoute()
 const store = useCensusStore()
 const authStore = useAuthStore()
 const areaStore = useAreaStore()
 const subTaskCounts = ref({})
+const recordStatsByTask = ref({})
+const isSubTaskMode = computed(() => route.query.taskType === 'sub')
 
 onMounted(async () => {
   await areaStore.fetchAreas()
-  await store.fetchTasks()
+  await fetchTaskRows()
   await loadSubTaskCounts()
+  await loadRecordStats()
 })
+
+watch(() => route.query.taskType, async () => {
+  await fetchTaskRows()
+  await loadSubTaskCounts()
+  await loadRecordStats()
+})
+
+async function fetchTaskRows() {
+  await store.fetchTasks({ taskType: isSubTaskMode.value ? 'sub' : 'main' })
+}
 
 async function loadSubTaskCounts() {
   const all = await db.censusTasks.toArray()
@@ -78,6 +104,27 @@ async function loadSubTaskCounts() {
 
 function subTaskCount(taskId) {
   return subTaskCounts.value[taskId] || 0
+}
+
+function taskRecordStats(taskId) {
+  return recordStatsByTask.value[taskId] || { importedInReview: 0, spotInReview: 0, actualSpot: 0, actualImported: 0 }
+}
+
+async function loadRecordStats() {
+  if (!isSubTaskMode.value) {
+    recordStatsByTask.value = {}
+    return
+  }
+  const next = {}
+  for (const task of store.tasks) {
+    const assignments = await db.censusAssignments.where('taskId').equals(Number(task.id)).toArray()
+    const records = []
+    for (const assignment of assignments) {
+      records.push(...await db.censusRecords.where('assignmentId').equals(Number(assignment.id)).toArray())
+    }
+    next[task.id] = buildRecordStats(records)
+  }
+  recordStatsByTask.value = next
 }
 
 function formatScope(row) {
@@ -92,7 +139,7 @@ async function handleDelete(task) {
     await ElMessageBox.confirm(`确定删除草稿任务「${task.title}」吗？删除后不可恢复。`, '确认删除', { type: 'warning' })
     await store.removeTask(task.id)
     ElMessage.success('任务已删除')
-    await store.fetchTasks()
+    await fetchTaskRows()
     await loadSubTaskCounts()
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') {
@@ -111,7 +158,7 @@ async function handleComplete(task) {
     await ElMessageBox.confirm(`确定结束主任务「${task.title}」吗？结束后任务状态将变为已完成。`, '结束任务', { type: 'warning' })
     await store.completeTask(task.id)
     ElMessage.success('任务已结束')
-    await store.fetchTasks()
+    await fetchTaskRows()
     await loadSubTaskCounts()
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') {
@@ -164,5 +211,30 @@ async function validateTaskCanComplete(taskId) {
 
 function parseArray(raw) {
   try { return Array.isArray(raw) ? raw : JSON.parse(raw || '[]') } catch { return [] }
+}
+
+function buildRecordStats(records = []) {
+  return records.reduce((acc, record) => {
+    const status = normalizeRecordStatus(record.status)
+    const type = getRecordCheckType(record)
+    if (hasEnteredReview(status)) {
+      if (type === 'imported_catalog') acc.importedInReview += 1
+      if (type === 'catalog_spot_check') acc.spotInReview += 1
+    }
+    if (status === 'available') {
+      if (type === 'imported_catalog') acc.actualImported += 1
+      if (type === 'catalog_spot_check') acc.actualSpot += 1
+    }
+    return acc
+  }, { importedInReview: 0, spotInReview: 0, actualSpot: 0, actualImported: 0 })
+}
+
+function hasEnteredReview(status) {
+  return status && !['draft', 'county_rejected', 'city_rejected', 'province_rejected'].includes(status)
+}
+
+function getRecordCheckType(record) {
+  if (record.checkType) return record.checkType
+  try { return JSON.parse(record.formData || '{}').checkType || '' } catch { return '' }
 }
 </script>

@@ -49,6 +49,18 @@
             <el-table-column label="核查数量" width="110" align="center">
               <template #default="{ row }">{{ subTaskStats(row.id).importedCheckCount }}</template>
             </el-table-column>
+            <el-table-column label="填报中核查" width="120" align="center">
+              <template #default="{ row }">{{ subTaskAuditStats(row.id).importedInReview }}</template>
+            </el-table-column>
+            <el-table-column label="填报中抽查" width="120" align="center">
+              <template #default="{ row }">{{ subTaskAuditStats(row.id).spotInReview }}</template>
+            </el-table-column>
+            <el-table-column label="实际抽查" width="110" align="center">
+              <template #default="{ row }">{{ subTaskAuditStats(row.id).actualSpot }}</template>
+            </el-table-column>
+            <el-table-column label="实核查" width="100" align="center">
+              <template #default="{ row }">{{ subTaskAuditStats(row.id).actualImported }}</template>
+            </el-table-column>
             <el-table-column prop="responsibleUserNames" label="责任人" min-width="180" show-overflow-tooltip />
             <el-table-column label="状态" width="100" align="center">
               <template #default="{ row }"><StatusTag :value="row.status" :options="CENSUS_TASK_STATUS_OPTIONS" /></template>
@@ -247,7 +259,7 @@ import { useAreaStore } from '@/stores/area'
 import { CENSUS_RECORD_STATUS_OPTIONS, CENSUS_TASK_STATUS_OPTIONS } from '@/utils/constants'
 import { formatDate, formatDateTime } from '@/utils/formatters'
 import { COLLECTION_FIELD_MAP, COLLECTION_MODULES, getOptionLabel, getVisibleModuleFields, shouldSkipBusinessModule } from '@/utils/collectionSpec'
-import { buildReviewPatch, canReviewRecord, getReviewStepForRole, isReviewerInScope, submitForCountyReviewPatch } from '@/utils/reviewFlow'
+import { buildReviewPatch, canReviewRecord, getReviewStepForRole, isReviewerInScope, normalizeRecordStatus, submitForCountyReviewPatch } from '@/utils/reviewFlow'
 import { archiveCensusRecord, publishRecordToAccommodation } from '@/utils/accommodationWorkflow'
 import db from '@/db'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -267,6 +279,7 @@ const unitDrawerVisible = ref(false)
 const unitDrawerRows = ref([])
 const unitDrawerPagination = reactive({ page: 1, pageSize: 10, total: 0 })
 const taskUnits = ref([])
+const subTaskRecordStats = ref({})
 const subTaskDialogVisible = ref(false)
 const submittingSubTask = ref(false)
 const editingSubTaskId = ref(null)
@@ -324,6 +337,7 @@ async function refresh() {
   await areaStore.fetchAreas()
   await store.fetchTaskDetail(route.params.id)
   await loadUsers()
+  if (isMainTask.value) await loadSubTaskRecordStats()
   if (!isMainTask.value) {
     await loadRecords()
     await loadTaskUnits()
@@ -436,6 +450,49 @@ function subTaskStats(taskId) {
     acc.importedCheckCount += Number(item.importedCheckCount || 0)
     return acc
   }, { unitCount: 0, spotCheckCount: 0, importedCheckCount: 0 })
+}
+
+function subTaskAuditStats(taskId) {
+  return subTaskRecordStats.value[taskId] || { importedInReview: 0, spotInReview: 0, actualSpot: 0, actualImported: 0 }
+}
+
+async function loadSubTaskRecordStats() {
+  const next = {}
+  for (const task of store.subTasks) {
+    const assignments = await db.censusAssignments.where('taskId').equals(Number(task.id)).toArray()
+    const assignmentIds = new Set(assignments.map(item => item.id))
+    const records = []
+    for (const assignmentId of assignmentIds) {
+      records.push(...await db.censusRecords.where('assignmentId').equals(Number(assignmentId)).toArray())
+    }
+    next[task.id] = buildRecordStats(records)
+  }
+  subTaskRecordStats.value = next
+}
+
+function buildRecordStats(records = []) {
+  return records.reduce((acc, record) => {
+    const status = normalizeRecordStatus(record.status)
+    const type = getRecordCheckType(record)
+    if (hasEnteredReview(status)) {
+      if (type === 'imported_catalog') acc.importedInReview += 1
+      if (type === 'catalog_spot_check') acc.spotInReview += 1
+    }
+    if (status === 'available') {
+      if (type === 'imported_catalog') acc.actualImported += 1
+      if (type === 'catalog_spot_check') acc.actualSpot += 1
+    }
+    return acc
+  }, { importedInReview: 0, spotInReview: 0, actualSpot: 0, actualImported: 0 })
+}
+
+function hasEnteredReview(status) {
+  return status && !['draft', 'county_rejected', 'city_rejected', 'province_rejected'].includes(status)
+}
+
+function getRecordCheckType(record) {
+  if (record.checkType) return record.checkType
+  try { return JSON.parse(record.formData || '{}').checkType || '' } catch { return '' }
 }
 
 function countyCountByTask(task) {
