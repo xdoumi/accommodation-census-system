@@ -244,7 +244,7 @@
 
       <template v-else-if="module.key === 'H'">
         <div class="m-form-group enumerator-field" data-field-key="censusEnumeratorName">
-          <div class="m-form-label">H1 普查人员</div>
+          <div class="m-form-label"><span class="required">*</span>H1 普查人员</div>
           <input
             v-model.trim="form.censusEnumeratorName"
             class="m-input"
@@ -259,7 +259,7 @@
             :disabled="readOnly"
             @change="event => form.censusEnumeratorName = event.target.value"
           >
-            <option value="">从系统用户中选择</option>
+            <option value="">从普查员用户中选择</option>
             <option v-for="user in systemUserOptions" :key="user.id" :value="user.realName || user.username">
               {{ user.realName || user.username }}{{ user.roleLabel ? ` · ${user.roleLabel}` : '' }}
             </option>
@@ -475,7 +475,7 @@ async function loadUnits() {
 async function loadSystemUsers() {
   const users = await db.users.toArray()
   systemUserOptions.value = users
-    .filter(user => user.status !== 'disabled')
+    .filter(user => user.status !== 'disabled' && user.role === 'enumerator')
     .map(user => ({ ...user, roleLabel: getRoleLabel(user.role) }))
     .sort((a, b) => String(a.realName || a.username || '').localeCompare(String(b.realName || b.username || ''), 'zh-CN'))
 }

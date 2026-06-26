@@ -76,8 +76,8 @@ export const COLLECTION_MODULES = [
   },
   {
     key: 'H',
-    title: '普查',
-    shortTitle: '普查',
+    title: '工作人员现场留痕',
+    shortTitle: '工作人员现场留痕',
     fields: ['censusEnumeratorName', 'censusRemark'],
   },
   {
@@ -319,7 +319,7 @@ export const COLLECTION_FIELD_MAP = {
   otaOther: { code: 'F1-a', label: '其他平台名称', requiredWhen: data => data.otaPlatforms?.includes('other'), type: 'text' },
   storefrontPhotos: { code: 'G1', label: '住宿单位门头照', required: true, type: 'photos' },
   groupPhotos: { code: 'G2', label: '核查人员与门头合影', required: true, type: 'photos' },
-  censusEnumeratorName: { code: 'H1', label: '普查人员', required: false, type: 'text', maxLength: 50 },
+  censusEnumeratorName: { code: 'H1', label: '普查人员', required: true, type: 'text', maxLength: 50 },
   censusRemark: { code: 'H2', label: '备注', required: false, type: 'textarea', maxLength: 500 },
   managerSignature: { code: 'I1', label: '住宿单位负责人签字', required: true, type: 'signature' },
   managerSignatureAt: {
