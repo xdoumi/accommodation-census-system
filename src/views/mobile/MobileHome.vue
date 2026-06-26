@@ -14,22 +14,28 @@
     <!-- 待办统计 -->
     <div class="m-card" style="margin-top: -24px; position: relative; z-index: 1;">
       <el-row :gutter="12">
-        <el-col :span="8">
+        <el-col :span="6">
           <div class="stat-item">
-            <div class="stat-value" style="color: #1a5fc5;">{{ todoCount }}</div>
-            <div class="stat-label">待填报</div>
+            <div class="stat-value" style="color: #1a5fc5;">{{ assignedTaskCount }}</div>
+            <div class="stat-label">分派任务</div>
           </div>
         </el-col>
-        <el-col :span="8">
+        <el-col :span="6">
           <div class="stat-item">
-            <div class="stat-value" style="color: #e6a23c;">{{ inProgressCount }}</div>
-            <div class="stat-label">进行中</div>
+            <div class="stat-value" style="color: #13c2c2;">{{ filledReportCount }}</div>
+            <div class="stat-label">已填报</div>
           </div>
         </el-col>
-        <el-col :span="8">
+        <el-col :span="6">
           <div class="stat-item">
-            <div class="stat-value" style="color: #67c23a;">{{ completedCount }}</div>
-            <div class="stat-label">已完成</div>
+            <div class="stat-value" style="color: #67c23a;">{{ newReportCount }}</div>
+            <div class="stat-label">新增填报</div>
+          </div>
+        </el-col>
+        <el-col :span="6">
+          <div class="stat-item">
+            <div class="stat-value" style="color: #f56c6c;">{{ rejectedCount }}</div>
+            <div class="stat-label">被驳回</div>
           </div>
         </el-col>
       </el-row>
@@ -39,19 +45,19 @@
       <div class="progress-row">
         <div>
           <div class="progress-title">核查任务执行进度</div>
-          <div class="progress-sub">{{ completedAssignments }}/{{ totalAssignments }} 个分配区域完成</div>
+          <div class="progress-sub">已填报核查 {{ importedFilledCount }} / 分配核查量 {{ allocatedImportedCount }}</div>
         </div>
-        <strong>{{ executionProgress }}%</strong>
+        <strong>{{ importedProgress }}%</strong>
       </div>
-      <el-progress :percentage="executionProgress" :stroke-width="8" :show-text="false" />
-      <div class="progress-row review">
+      <el-progress :percentage="importedProgress" :stroke-width="8" :show-text="false" />
+      <div class="progress-row spot">
         <div>
-          <div class="progress-title">审核进度</div>
-          <div class="progress-sub">{{ reviewedRecords }}/{{ totalRecords }} 条记录通过审核</div>
+          <div class="progress-title">抽查任务执行进度</div>
+          <div class="progress-sub">已填抽查 {{ spotFilledCount }} / 分配抽查量 {{ allocatedSpotCount }}</div>
         </div>
-        <strong>{{ reviewProgress }}%</strong>
+        <strong>{{ spotProgress }}%</strong>
       </div>
-      <el-progress :percentage="reviewProgress" :stroke-width="8" :show-text="false" color="#67c23a" />
+      <el-progress :percentage="spotProgress" :stroke-width="8" :show-text="false" color="#67c23a" />
     </div>
 
     <div class="task-section">
@@ -124,10 +130,10 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useCensusStore } from '@/stores/census'
-import { useStatisticsStore } from '@/stores/statistics'
 import { CENSUS_ASSIGNMENT_STATUS_OPTIONS, getRoleLabel } from '@/utils/constants'
 import { formatDate } from '@/utils/formatters'
 import { normalizeRecordStatus } from '@/utils/reviewFlow'
+import { allocatedImportedCount as assignmentImportedCount, allocatedSpotCount as assignmentSpotCount, getRecordCheckType, isCountyPending } from '@/utils/taskMetrics'
 import db from '@/db'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import StatusTag from '@/components/common/StatusTag.vue'
@@ -135,7 +141,6 @@ import StatusTag from '@/components/common/StatusTag.vue'
 const router = useRouter()
 const authStore = useAuthStore()
 const censusStore = useCensusStore()
-const statisticsStore = useStatisticsStore()
 const records = ref([])
 const taskById = ref(new Map())
 const activeFilter = ref('all')
@@ -155,15 +160,22 @@ const greeting = computed(() => {
   return '晚上好'
 })
 
-const todoCount = computed(() => censusStore.assignments.filter(a => a.status === 'pending').length)
-const inProgressCount = computed(() => censusStore.assignments.filter(a => ['in_progress', 'submitted'].includes(a.status)).length)
-const completedCount = computed(() => censusStore.assignments.filter(a => a.status === 'reviewed').length)
-const totalAssignments = computed(() => censusStore.assignments.length)
-const completedAssignments = computed(() => censusStore.assignments.filter(a => ['submitted', 'reviewed', 'completed'].includes(a.status) || Number(a.progress) >= 100).length)
-const executionProgress = computed(() => totalAssignments.value ? Math.round(censusStore.assignments.reduce((sum, item) => sum + Number(item.progress || 0), 0) / totalAssignments.value) : 0)
-const totalRecords = computed(() => records.value.length)
-const reviewedRecords = computed(() => records.value.filter(record => ['available', 'approved'].includes(record.status)).length)
-const reviewProgress = computed(() => totalRecords.value ? Math.round(reviewedRecords.value / totalRecords.value * 100) : 0)
+const normalizedRecords = computed(() => records.value.map(record => ({ ...record, status: normalizeRecordStatus(record.status) })))
+const allocatedSpotCount = computed(() => censusStore.assignments.reduce((sum, item) => sum + assignmentSpotCount(item), 0))
+const allocatedImportedCount = computed(() => censusStore.assignments.reduce((sum, item) => sum + assignmentImportedCount(item), 0))
+const assignedTaskCount = computed(() => allocatedSpotCount.value + allocatedImportedCount.value)
+const filledRecords = computed(() => normalizedRecords.value.filter(record => isCountyPending(record.status)))
+const filledReportCount = computed(() => filledRecords.value.length)
+const newReportCount = computed(() => filledRecords.value.filter(record => getRecordCheckType(record) === 'new_catalog').length)
+const rejectedCount = computed(() => normalizedRecords.value.filter(record => record.status === 'county_rejected' && Number(record.filledBy) === Number(authStore.currentUser?.id)).length)
+const importedFilledCount = computed(() => filledRecords.value.filter(record => getRecordCheckType(record) === 'imported_catalog').length)
+const spotFilledCount = computed(() => filledRecords.value.filter(record => getRecordCheckType(record) === 'catalog_spot_check').length)
+const importedProgress = computed(() => allocatedImportedCount.value
+  ? Math.min(100, Math.round(importedFilledCount.value / allocatedImportedCount.value * 100))
+  : 0)
+const spotProgress = computed(() => allocatedSpotCount.value
+  ? Math.min(100, Math.round(spotFilledCount.value / allocatedSpotCount.value * 100))
+  : 0)
 
 const groupedTasks = computed(() => {
   const grouped = new Map()
@@ -214,7 +226,6 @@ const filteredTasks = computed(() => {
 
 onMounted(async () => {
   await censusStore.fetchMyAssignments()
-  await statisticsStore.fetchDashboardData()
   const tasks = await db.censusTasks.toArray()
   taskById.value = new Map(tasks.map(task => [task.id, task]))
   await loadRecords()
@@ -319,15 +330,16 @@ function parseArray(raw) {
   text-align: center;
 
   .stat-value {
-    font-size: 28px;
+    font-size: 24px;
     font-weight: 700;
     line-height: 1.2;
   }
 
   .stat-label {
-    font-size: 12px;
+    font-size: 11px;
     color: #909399;
     margin-top: 4px;
+    white-space: nowrap;
   }
 }
 
@@ -339,7 +351,7 @@ function parseArray(raw) {
     gap: 12px;
     margin-bottom: 8px;
 
-    &.review {
+    &.spot {
       margin-top: 16px;
     }
 
