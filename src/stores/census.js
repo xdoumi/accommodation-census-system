@@ -16,7 +16,11 @@ export const useCensusStore = defineStore('census', () => {
   async function fetchTasks(filters = {}) {
     taskLoading.value = true
     try {
-      const allTasks = await db.censusTasks.toArray()
+      let allTasks = await db.censusTasks.toArray()
+      for (const task of allTasks.filter(item => (item.taskType || 'main') === 'sub')) {
+        await syncAssignmentsForSubTask(task.id)
+      }
+      allTasks = await db.censusTasks.toArray()
       const requestedTaskType = filters.taskType || 'main'
 
       // 权限过滤
@@ -148,11 +152,12 @@ export const useCensusStore = defineStore('census', () => {
     const areaCodes = JSON.parse(task.assignedAreaCodes || '[]')
     const assignmentAreaCodes = await getAssignmentAreaCodesFromSelection(areaCodes)
     const responsibleUserIds = JSON.parse(task.responsibleUserIds || '[]')
-    const cityAdminIds = JSON.parse(task.cityAdminIds || '[]')
-    const countyAdminIds = JSON.parse(task.countyAdminIds || '[]')
+    const reviewerResolver = await createOrganizationReviewerResolver()
     const assignedTo = responsibleUserIds[0] || null
     const existingAssignments = await db.censusAssignments.where('taskId').equals(Number(taskId)).toArray()
     const validAreaCodes = new Set(assignmentAreaCodes.map(code => String(code)))
+    const taskCityAdminIds = new Set()
+    const taskCountyAdminIds = new Set()
 
     for (const assignment of existingAssignments) {
       if (validAreaCodes.has(String(assignment.areaCode))) continue
@@ -167,6 +172,9 @@ export const useCensusStore = defineStore('census', () => {
       const targetAccommodationIds = targetUnits.map(item => item.id)
       const spotCheckCount = targetUnits.filter(item => item.checkType === 'catalog_spot_check').length
       const importedCheckCount = targetUnits.filter(item => item.checkType === 'imported_catalog').length
+      const reviewers = reviewerResolver(areaCode)
+      reviewers.cityAdminIds.forEach(id => taskCityAdminIds.add(id))
+      reviewers.countyAdminIds.forEach(id => taskCountyAdminIds.add(id))
       const unitPatch = {
         targetAccommodationIds: JSON.stringify(targetAccommodationIds),
         unitCount: targetAccommodationIds.length,
@@ -182,10 +190,10 @@ export const useCensusStore = defineStore('census', () => {
           assignedTo,
           assignedToIds: JSON.stringify(responsibleUserIds),
           assignedToName: task.responsibleUserNames || '',
-          cityAdminIds: JSON.stringify(cityAdminIds),
-          cityAdminNames: task.cityAdminNames || '',
-          countyAdminIds: JSON.stringify(countyAdminIds),
-          countyAdminNames: task.countyAdminNames || '',
+          cityAdminIds: JSON.stringify(reviewers.cityAdminIds),
+          cityAdminNames: reviewers.cityAdminNames,
+          countyAdminIds: JSON.stringify(reviewers.countyAdminIds),
+          countyAdminNames: reviewers.countyAdminNames,
           status: 'pending',
           progress: 0,
           submittedAt: null,
@@ -201,15 +209,115 @@ export const useCensusStore = defineStore('census', () => {
           assignedTo,
           assignedToIds: JSON.stringify(responsibleUserIds),
           assignedToName: task.responsibleUserNames || '',
-          cityAdminIds: JSON.stringify(cityAdminIds),
-          cityAdminNames: task.cityAdminNames || '',
-          countyAdminIds: JSON.stringify(countyAdminIds),
-          countyAdminNames: task.countyAdminNames || '',
+          cityAdminIds: JSON.stringify(reviewers.cityAdminIds),
+          cityAdminNames: reviewers.cityAdminNames,
+          countyAdminIds: JSON.stringify(reviewers.countyAdminIds),
+          countyAdminNames: reviewers.countyAdminNames,
           ...unitPatch,
           updatedAt: now,
         })
       }
     }
+
+    await syncTaskReviewerSnapshot(taskId, taskCityAdminIds, taskCountyAdminIds, reviewerResolver.userNameById, now)
+  }
+
+  async function createOrganizationReviewerResolver() {
+    const [areas, organizations, users] = await Promise.all([
+      db.areas.toArray(),
+      db.organizations?.toArray() || [],
+      db.users.toArray(),
+    ])
+    const areaByCode = new Map(areas.map(item => [String(item.code), item]))
+    const countiesByCity = new Map()
+    areas.filter(item => item.level === 3).forEach(item => {
+      const cityCode = String(item.parentCode || '')
+      if (!countiesByCity.has(cityCode)) countiesByCity.set(cityCode, [])
+      countiesByCity.get(cityCode).push(String(item.code))
+    })
+
+    const userById = new Map(users.map(item => [Number(item.id), item]))
+    const userNameById = (id) => userById.get(Number(id))?.realName || ''
+    const orgsByLevelAndArea = new Map()
+    organizations
+      .filter(item => item.status !== 'inactive')
+      .forEach(item => {
+        const key = `${Number(item.level)}:${String(item.areaCode || '')}`
+        if (!orgsByLevelAndArea.has(key)) orgsByLevelAndArea.set(key, [])
+        orgsByLevelAndArea.get(key).push(item)
+      })
+
+    const idsFromOrganizations = (level, areaCodes, role) => {
+      const ids = new Set()
+      areaCodes.forEach(areaCode => {
+        const orgs = orgsByLevelAndArea.get(`${level}:${String(areaCode)}`) || []
+        orgs.forEach(org => {
+          parseJsonArray(org.responsibleUserIds).forEach(id => {
+            const user = userById.get(Number(id))
+            if (user?.role === role && user.status !== 'inactive') ids.add(Number(id))
+          })
+        })
+      })
+      return [...ids]
+    }
+
+    const resolveArea = (areaCode) => {
+      const code = String(areaCode || '')
+      const area = areaByCode.get(code)
+      if (!area || area.level === 1 || code === '520000') {
+        return {
+          cityCodes: areas.filter(item => item.level === 2).map(item => String(item.code)),
+          countyCodes: areas.filter(item => item.level === 3).map(item => String(item.code)),
+        }
+      }
+      if (area.level === 2 || code.endsWith('00')) {
+        return {
+          cityCodes: [code],
+          countyCodes: countiesByCity.get(code) || [],
+        }
+      }
+      return {
+        cityCodes: [String(area.parentCode || `${code.slice(0, 4)}00`)],
+        countyCodes: [code],
+      }
+    }
+
+    const resolver = (areaCode) => {
+      const { cityCodes, countyCodes } = resolveArea(areaCode)
+      const cityAdminIds = idsFromOrganizations(2, cityCodes, 'city_admin')
+      const countyAdminIds = idsFromOrganizations(3, countyCodes, 'county_admin')
+      return {
+        cityAdminIds,
+        cityAdminNames: cityAdminIds.map(userNameById).filter(Boolean).join('、'),
+        countyAdminIds,
+        countyAdminNames: countyAdminIds.map(userNameById).filter(Boolean).join('、'),
+      }
+    }
+    resolver.userNameById = userNameById
+    return resolver
+  }
+
+  async function syncTaskReviewerSnapshot(taskId, cityAdminIds, countyAdminIds, userNameById, now) {
+    const cityIds = [...cityAdminIds]
+    const countyIds = [...countyAdminIds]
+    const task = await db.censusTasks.get(Number(taskId))
+    const nextCityIds = JSON.stringify(cityIds)
+    const nextCountyIds = JSON.stringify(countyIds)
+    const nextCityNames = cityIds.map(userNameById).filter(Boolean).join('、')
+    const nextCountyNames = countyIds.map(userNameById).filter(Boolean).join('、')
+    if (
+      task?.cityAdminIds === nextCityIds
+      && task?.countyAdminIds === nextCountyIds
+      && task?.cityAdminNames === nextCityNames
+      && task?.countyAdminNames === nextCountyNames
+    ) return
+    await db.censusTasks.update(Number(taskId), {
+      cityAdminIds: nextCityIds,
+      cityAdminNames: nextCityNames,
+      countyAdminIds: nextCountyIds,
+      countyAdminNames: nextCountyNames,
+      updatedAt: now,
+    })
   }
 
   async function getAssignmentAreaCodesFromSelection(areaCodes = []) {
@@ -447,17 +555,15 @@ export const useCensusStore = defineStore('census', () => {
       })
     } else {
       const parseIds = (raw) => {
-        try { return JSON.parse(raw || '[]') } catch { return [] }
+        try { return JSON.parse(raw || '[]').map(id => Number(id)).filter(Boolean) } catch { return [] }
       }
       const all = await db.censusAssignments.toArray()
       assignments.value = all.filter(a => {
         if (auth.userRole === 'county_admin') {
-          if (parseIds(a.countyAdminIds).includes(uid)) return true
-          return a.areaCode === auth.userAreaCode
+          return parseIds(a.countyAdminIds).includes(uid)
         }
         if (auth.userRole === 'city_admin') {
-          if (parseIds(a.cityAdminIds).includes(uid)) return true
-          return a.areaCode.startsWith(auth.userAreaCode.substring(0, 4))
+          return parseIds(a.cityAdminIds).includes(uid)
         }
         return false
       })
@@ -526,8 +632,7 @@ function areaCodeMatchesRoleScope(areaCode, role, userAreaCode) {
 
 function isSubTaskVisibleToScopedRole(task, role, userId, userAreaCode) {
   if (!task || (task.taskType || 'main') !== 'sub') return false
-  if (isExplicitReviewer(task, role, userId)) return true
-  return getTaskAreaCodes(task).some(code => areaCodeMatchesRoleScope(code, role, userAreaCode))
+  return isExplicitReviewer(task, role, userId)
 }
 
 function isTaskVisibleForScopedRole(task, { requestedTaskType, allTasks, role, userId, userAreaCode }) {

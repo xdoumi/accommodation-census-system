@@ -48,7 +48,17 @@
         <el-progress :percentage="item.progress || 0" :stroke-width="8" :show-text="false" />
         <div class="card-foot">
           <span>截止：{{ formatDate(item.deadline) || '-' }}</span>
-          <el-button type="primary" size="small" @click.stop="openTask(item)">查看单位</el-button>
+          <div class="card-actions">
+            <el-button
+              v-if="item.taskStatus !== 'completed'"
+              size="small"
+              :loading="completingTaskId === item.taskId"
+              @click.stop="handleCompleteTask(item)"
+            >
+              结束任务
+            </el-button>
+            <el-button type="primary" size="small" @click.stop="openTask(item)">查看单位</el-button>
+          </div>
         </div>
       </div>
     </div>
@@ -61,13 +71,16 @@ import { useRouter } from 'vue-router'
 import { useCensusStore } from '@/stores/census'
 import { CENSUS_ASSIGNMENT_STATUS_OPTIONS } from '@/utils/constants'
 import { formatDate } from '@/utils/formatters'
+import { normalizeRecordStatus } from '@/utils/reviewFlow'
 import db from '@/db'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import StatusTag from '@/components/common/StatusTag.vue'
 
 const router = useRouter()
 const censusStore = useCensusStore()
 const activeFilter = ref('all')
 const taskById = ref(new Map())
+const completingTaskId = ref(null)
 
 const filterTabs = [
   { label: '全部', value: 'all' },
@@ -85,6 +98,7 @@ const groupedTasks = computed(() => {
       grouped.set(key, {
         taskId: item.taskId,
         taskTitle: task.title || item.areaName || '子任务',
+        taskStatus: task.status,
         deadline: task.deadline,
         startDate: task.startDate,
         assignedToName: item.assignedToName,
@@ -145,6 +159,85 @@ function deriveTaskStatus(statuses = [], progress = 0) {
 
 function openTask(item) {
   router.push(`/m/tasks/${item.taskId}`)
+}
+
+async function handleCompleteTask(item) {
+  completingTaskId.value = item.taskId
+  try {
+    const check = await validateImportedCheckCompleted(item.taskId)
+    if (!check.ok) {
+      ElMessage.warning('任务还有核查任务未完成')
+      return
+    }
+    await ElMessageBox.confirm(`确定结束子任务「${item.taskTitle}」吗？`, '结束任务', { type: 'warning' })
+    const assignments = await db.censusAssignments.where('taskId').equals(Number(item.taskId)).toArray()
+    const now = new Date().toISOString()
+    for (const assignment of assignments) {
+      await db.censusAssignments.update(assignment.id, {
+        status: 'submitted',
+        progress: 100,
+        submittedAt: assignment.submittedAt || now,
+        updatedAt: now,
+      })
+    }
+    await censusStore.completeTask(item.taskId)
+    await reloadTasks()
+    ElMessage.success('子任务已结束')
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error(error.message || '结束任务失败')
+    }
+  } finally {
+    completingTaskId.value = null
+  }
+}
+
+async function validateImportedCheckCompleted(taskId) {
+  const assignments = await db.censusAssignments.where('taskId').equals(Number(taskId)).toArray()
+  const requiredUnits = []
+  for (const assignment of assignments) {
+    const ids = parseArray(assignment.targetAccommodationIds).map(Number).filter(Boolean)
+    for (const id of ids) {
+      const unit = await db.accommodations.get(id)
+      if (unit?.checkType === 'imported_catalog') {
+        requiredUnits.push(unit)
+      }
+    }
+  }
+  if (!requiredUnits.length) return { ok: true }
+
+  const records = []
+  for (const assignment of assignments) {
+    records.push(...await db.censusRecords.where('assignmentId').equals(Number(assignment.id)).toArray())
+  }
+  records.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt))
+  const recordByUnit = new Map()
+  const recordByCreditCode = new Map()
+  records.forEach(record => {
+    if (record.accommodationId && !recordByUnit.has(Number(record.accommodationId))) recordByUnit.set(Number(record.accommodationId), record)
+    if (record.creditCode && !recordByCreditCode.has(record.creditCode)) recordByCreditCode.set(record.creditCode, record)
+  })
+
+  const unfinished = requiredUnits.filter(unit => {
+    const record = recordByUnit.get(Number(unit.id)) || recordByCreditCode.get(unit.creditCode)
+    return !isImportedRecordCompleted(record)
+  })
+  return { ok: unfinished.length === 0, unfinishedCount: unfinished.length }
+}
+
+function isImportedRecordCompleted(record) {
+  if (!record) return false
+  return ['pending_county_review', 'pending_city_review', 'pending_province_review', 'available'].includes(normalizeRecordStatus(record.status))
+}
+
+function parseArray(raw) {
+  try { return Array.isArray(raw) ? raw : JSON.parse(raw || '[]') } catch { return [] }
+}
+
+async function reloadTasks() {
+  await censusStore.fetchMyAssignments()
+  const tasks = await db.censusTasks.toArray()
+  taskById.value = new Map(tasks.map(task => [task.id, task]))
 }
 </script>
 
@@ -233,6 +326,13 @@ function openTask(item) {
   justify-content: space-between;
   align-items: flex-start;
   gap: 10px;
+}
+
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .task-title {

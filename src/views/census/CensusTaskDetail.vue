@@ -50,8 +50,6 @@
               <template #default="{ row }">{{ subTaskStats(row.id).importedCheckCount }}</template>
             </el-table-column>
             <el-table-column prop="responsibleUserNames" label="责任人" min-width="180" show-overflow-tooltip />
-            <el-table-column prop="cityAdminNames" label="市级管理员" min-width="150" show-overflow-tooltip />
-            <el-table-column prop="countyAdminNames" label="县级管理员" min-width="150" show-overflow-tooltip />
             <el-table-column label="状态" width="100" align="center">
               <template #default="{ row }"><StatusTag :value="row.status" :options="CENSUS_TASK_STATUS_OPTIONS" /></template>
             </el-table-column>
@@ -154,48 +152,17 @@
         <el-form-item label="分配区域" prop="assignedAreaCodes">
           <AreaAssignTree v-model="subTaskForm.assignedAreaCodes" />
         </el-form-item>
-        <el-form-item label="普查人员" prop="responsibleUserId">
+        <el-form-item label="普查人员" prop="responsibleUserIds">
           <el-select
-            v-model="subTaskForm.responsibleUserId"
+            v-model="subTaskForm.responsibleUserIds"
+            multiple
             filterable
             clearable
-            placeholder="输入姓名、用户名或手机号搜索并选择一名普查人员"
+            placeholder="输入姓名、用户名或手机号搜索并选择普查人员"
             style="width: 100%"
           >
             <el-option
               v-for="user in enumeratorUsers"
-              :key="user.id"
-              :label="`${user.realName}（${user.username} · ${user.areaName}）`"
-              :value="user.id"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="市级管理员" prop="cityAdminIds">
-          <el-select
-            v-model="subTaskForm.cityAdminIds"
-            multiple
-            filterable
-            placeholder="指定市级管理员"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="user in cityAdminUsers"
-              :key="user.id"
-              :label="`${user.realName}（${user.username} · ${user.areaName}）`"
-              :value="user.id"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="县级管理员" prop="countyAdminIds">
-          <el-select
-            v-model="subTaskForm.countyAdminIds"
-            multiple
-            filterable
-            placeholder="指定县级管理员"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="user in countyAdminUsers"
               :key="user.id"
               :label="`${user.realName}（${user.username} · ${user.areaName}）`"
               :value="user.id"
@@ -305,26 +272,20 @@ const submittingSubTask = ref(false)
 const editingSubTaskId = ref(null)
 const subTaskFormRef = ref(null)
 const enumeratorUsers = ref([])
-const cityAdminUsers = ref([])
-const countyAdminUsers = ref([])
 
 const subTaskForm = reactive({
   title: '',
   deadline: '',
   description: '',
   assignedAreaCodes: [],
-  responsibleUserId: null,
-  cityAdminIds: [],
-  countyAdminIds: [],
+  responsibleUserIds: [],
 })
 
 const subTaskRules = {
   title: [{ required: true, message: '请输入子任务名称', trigger: 'blur' }],
   deadline: [{ required: true, message: '请选择截止日期', trigger: 'change' }],
   assignedAreaCodes: [{ required: true, type: 'array', min: 1, message: '请选择分配区域', trigger: 'change' }],
-  responsibleUserId: [{ required: true, message: '请选择一名普查人员', trigger: 'change' }],
-  cityAdminIds: [{ required: true, type: 'array', min: 1, message: '请选择市级管理员', trigger: 'change' }],
-  countyAdminIds: [{ required: true, type: 'array', min: 1, message: '请选择县级管理员', trigger: 'change' }],
+  responsibleUserIds: [{ required: true, type: 'array', min: 1, message: '请选择普查人员', trigger: 'change' }],
 }
 
 const isMainTask = computed(() => (store.currentTask?.taskType || 'main') === 'main')
@@ -372,8 +333,6 @@ async function refresh() {
 async function loadUsers() {
   const activeUsers = (await db.users.toArray()).filter(user => user.status === 'active')
   enumeratorUsers.value = activeUsers.filter(user => user.role === 'enumerator')
-  cityAdminUsers.value = activeUsers.filter(user => user.role === 'city_admin')
-  countyAdminUsers.value = activeUsers.filter(user => user.role === 'county_admin')
 }
 
 function openSubTaskDialog() {
@@ -382,9 +341,7 @@ function openSubTaskDialog() {
   subTaskForm.deadline = store.currentTask.deadline?.split('T')[0] || ''
   subTaskForm.description = ''
   subTaskForm.assignedAreaCodes = []
-  subTaskForm.responsibleUserId = null
-  subTaskForm.cityAdminIds = []
-  subTaskForm.countyAdminIds = []
+  subTaskForm.responsibleUserIds = []
   subTaskDialogVisible.value = true
 }
 
@@ -394,9 +351,7 @@ function openEditSubTaskDialog(task) {
   subTaskForm.deadline = task.deadline?.split('T')[0] || ''
   subTaskForm.description = task.description || ''
   subTaskForm.assignedAreaCodes = parseArray(task.assignedAreaCodes)
-  subTaskForm.responsibleUserId = parseArray(task.responsibleUserIds)[0] || null
-  subTaskForm.cityAdminIds = parseArray(task.cityAdminIds)
-  subTaskForm.countyAdminIds = parseArray(task.countyAdminIds)
+  subTaskForm.responsibleUserIds = parseArray(task.responsibleUserIds)
   subTaskDialogVisible.value = true
 }
 
@@ -405,10 +360,8 @@ async function submitSubTask() {
   if (!valid) return
   submittingSubTask.value = true
   try {
-    const responsibleUserIds = subTaskForm.responsibleUserId ? [subTaskForm.responsibleUserId] : []
+    const responsibleUserIds = subTaskForm.responsibleUserIds.slice()
     const selectedUsers = enumeratorUsers.value.filter(user => responsibleUserIds.includes(user.id))
-    const selectedCityAdmins = cityAdminUsers.value.filter(user => subTaskForm.cityAdminIds.includes(user.id))
-    const selectedCountyAdmins = countyAdminUsers.value.filter(user => subTaskForm.countyAdminIds.includes(user.id))
     const payload = {
       title: subTaskForm.title,
       description: subTaskForm.description,
@@ -416,10 +369,6 @@ async function submitSubTask() {
       assignedAreaCodes: JSON.stringify(subTaskForm.assignedAreaCodes),
       responsibleUserIds: JSON.stringify(responsibleUserIds),
       responsibleUserNames: selectedUsers.map(user => user.realName).join('、'),
-      cityAdminIds: JSON.stringify(subTaskForm.cityAdminIds),
-      cityAdminNames: selectedCityAdmins.map(user => user.realName).join('、'),
-      countyAdminIds: JSON.stringify(subTaskForm.countyAdminIds),
-      countyAdminNames: selectedCountyAdmins.map(user => user.realName).join('、'),
     }
     if (editingSubTaskId.value) {
       await store.updateSubTask(editingSubTaskId.value, payload)
