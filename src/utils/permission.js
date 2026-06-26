@@ -61,6 +61,11 @@ export const PERMISSION_TREE = [
           { value: 'census:create', label: '创建' },
           { value: 'census:update', label: '编辑' },
           { value: 'census:delete', label: '删除' },
+          { value: 'census:task:create', label: '创建任务' },
+          { value: 'census:task:create_sub', label: '创建子任务' },
+          { value: 'census:task:update', label: '编辑任务' },
+          { value: 'census:task:delete', label: '删除任务' },
+          { value: 'census:task:toggle', label: '启动/结束任务' },
           { value: 'census:fill', label: '数据填报' },
         ],
       },
@@ -121,7 +126,7 @@ export const PERMISSION_TREE = [
       },
       {
         value: 'system:organization-page',
-        label: '组织机构管理',
+        label: '组织机构',
         children: [
           { value: 'system:organization:view', label: '查看' },
           { value: 'system:organization:create', label: '新增' },
@@ -150,7 +155,7 @@ export const PERMISSION_GROUPS = PERMISSION_TREE.map(group => ({
   permissions: flattenPermissionTree(group.children || []),
 }))
 export const ROLE_PERMISSION_STORAGE_KEY = 'census_role_permissions'
-export const ROLE_PERMISSION_MIGRATION_KEY = 'census_role_permissions_migration_v2'
+export const ROLE_PERMISSION_MIGRATION_KEY = 'census_role_permissions_migration_v3'
 
 // 角色权限映射
 export const DEFAULT_ROLE_PERMISSIONS = {
@@ -158,7 +163,7 @@ export const DEFAULT_ROLE_PERMISSIONS = {
     'dashboard:view',
     'accommodation:view', 'accommodation:create', 'accommodation:update', 'accommodation:delete', 'accommodation:import', 'accommodation:export',
     'accommodation:review:view', 'accommodation:review:edit', 'accommodation:review:delete', 'accommodation:review:approve', 'accommodation:review:reject', 'accommodation:review:batch_approve', 'accommodation:review:export', 'accommodation:restore',
-    'census:view', 'census:create', 'census:update', 'census:delete', 'census:fill', 'census:review',
+    'census:view', 'census:create', 'census:update', 'census:delete', 'census:task:create', 'census:task:create_sub', 'census:task:update', 'census:task:delete', 'census:task:toggle', 'census:fill', 'census:review',
     'statistics:view', 'statistics:map:view', 'statistics:export',
     'system:user:view', 'system:user:create', 'system:user:update', 'system:user:status', 'system:user:reset_password', 'system:user:delete',
     'system:role:view', 'system:role:create', 'system:role:update', 'system:role:delete',
@@ -248,9 +253,12 @@ function applyRolePermissionMigration(config) {
   if (localStorage.getItem(ROLE_PERMISSION_MIGRATION_KEY)) return
   Object.keys(config || {}).forEach(role => {
     const defaults = DEFAULT_ROLE_PERMISSIONS[role] || []
-    const reviewPermissions = defaults.filter(permission => permission.startsWith('accommodation:review:'))
-    if (!reviewPermissions.length) return
-    config[role] = Array.from(new Set([...(config[role] || []), ...reviewPermissions]))
+    const newDefaultPermissions = defaults.filter(permission => (
+      permission.startsWith('accommodation:review:')
+      || permission.startsWith('census:task:')
+    ))
+    if (!newDefaultPermissions.length) return
+    config[role] = Array.from(new Set([...(config[role] || []), ...newDefaultPermissions]))
   })
   localStorage.setItem(ROLE_PERMISSION_STORAGE_KEY, JSON.stringify(config))
   localStorage.setItem(ROLE_PERMISSION_MIGRATION_KEY, '1')

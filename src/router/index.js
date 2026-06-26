@@ -73,7 +73,7 @@ const routes = [
         path: 'census/create',
         name: 'CensusTaskCreate',
         component: () => import('@/views/census/CensusTaskForm.vue'),
-        meta: { title: '创建普查任务', permission: 'census:create', parent: 'CensusTaskList' },
+        meta: { title: '创建普查任务', permission: 'census:task:create', parent: 'CensusTaskList' },
       },
       {
         path: 'census/:id',
@@ -85,7 +85,7 @@ const routes = [
         path: 'census/:id/edit',
         name: 'CensusTaskEdit',
         component: () => import('@/views/census/CensusTaskForm.vue'),
-        meta: { title: '编辑任务', permission: 'census:update', parent: 'CensusTaskList' },
+        meta: { title: '编辑任务', permission: 'census:task:update', parent: 'CensusTaskList' },
       },
       {
         path: 'census/:id/entry',
@@ -141,7 +141,7 @@ const routes = [
         path: 'system/organizations',
         name: 'OrganizationManagement',
         component: () => import('@/views/system/OrganizationManagement.vue'),
-        meta: { title: '组织机构管理', permission: 'system:organization:view', icon: 'OfficeBuilding' },
+        meta: { title: '组织机构', permission: 'system:organization:view', icon: 'OfficeBuilding' },
       },
       {
         path: 'system/ai-settings',

@@ -3,7 +3,7 @@
     <el-card shadow="never">
       <div class="page-header">
         <span class="page-title">{{ isSubTaskMode ? '子任务列表' : '普查任务列表' }}</span>
-        <el-button type="primary" @click="router.push('/census/create')" v-if="!isSubTaskMode && authStore.hasPermission('census:create')">
+        <el-button type="primary" @click="router.push('/census/create')" v-if="!isSubTaskMode && authStore.hasPermission('census:task:create')">
           <el-icon><Plus /></el-icon>创建任务
         </el-button>
       </div>
@@ -27,16 +27,28 @@
         <el-table-column v-if="!isSubTaskMode" label="子任务" width="90" align="center">
           <template #default="{ row }">{{ subTaskCount(row.id) }}个</template>
         </el-table-column>
-        <el-table-column v-if="isSubTaskMode" label="填报中核查" width="120" align="center">
-          <template #default="{ row }">{{ taskRecordStats(row.id).importedInReview }}</template>
+        <el-table-column v-if="isSubTaskMode" label="分配区域" width="110" align="center">
+          <template #default="{ row }">{{ countyCountByTask(row) }}个</template>
         </el-table-column>
-        <el-table-column v-if="isSubTaskMode" label="填报中抽查" width="120" align="center">
-          <template #default="{ row }">{{ taskRecordStats(row.id).spotInReview }}</template>
+        <el-table-column v-if="isSubTaskMode" label="单位数量" width="100" align="center">
+          <template #default="{ row }">{{ taskAssignmentStats(row.id).unitCount }}</template>
+        </el-table-column>
+        <el-table-column v-if="isSubTaskMode" label="分配抽查量" width="120" align="center">
+          <template #default="{ row }">{{ taskAssignmentStats(row.id).allocatedSpot }}</template>
+        </el-table-column>
+        <el-table-column v-if="isSubTaskMode" label="抽查-县级待审" width="130" align="center">
+          <template #default="{ row }">{{ taskRecordStats(row.id).spotCountyPending }}</template>
         </el-table-column>
         <el-table-column v-if="isSubTaskMode" label="实际抽查" width="110" align="center">
           <template #default="{ row }">{{ taskRecordStats(row.id).actualSpot }}</template>
         </el-table-column>
-        <el-table-column v-if="isSubTaskMode" label="实核查" width="100" align="center">
+        <el-table-column v-if="isSubTaskMode" label="分配核查量" width="120" align="center">
+          <template #default="{ row }">{{ taskAssignmentStats(row.id).allocatedImported }}</template>
+        </el-table-column>
+        <el-table-column v-if="isSubTaskMode" label="核查-县级待审" width="130" align="center">
+          <template #default="{ row }">{{ taskRecordStats(row.id).importedCountyPending }}</template>
+        </el-table-column>
+        <el-table-column v-if="isSubTaskMode" label="实际核查" width="110" align="center">
           <template #default="{ row }">{{ taskRecordStats(row.id).actualImported }}</template>
         </el-table-column>
         <el-table-column prop="createdAt" label="创建时间" width="160" align="center">
@@ -45,9 +57,10 @@
         <el-table-column label="操作" width="300" align="center" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="router.push(`/census/${row.id}`)">查看</el-button>
-            <el-button link type="primary" size="small" @click="router.push(`/census/${row.id}/edit`)" v-if="row.status === 'draft' && authStore.hasPermission('census:update')">编辑</el-button>
-            <el-button link type="success" size="small" @click="handleComplete(row)" v-if="row.status !== 'completed' && authStore.hasPermission('census:update')">结束</el-button>
-            <el-button link type="danger" size="small" @click="handleDelete(row)" v-if="row.status === 'draft' && authStore.hasPermission('census:delete')">删除</el-button>
+            <el-button link type="primary" size="small" @click="router.push(`/census/${row.id}/edit`)" v-if="authStore.hasPermission('census:task:update')">编辑</el-button>
+            <el-button link type="success" size="small" @click="handleStart(row)" v-if="row.status !== 'in_progress' && authStore.hasPermission('census:task:toggle')">启动</el-button>
+            <el-button link type="warning" size="small" @click="handleComplete(row)" v-if="row.status === 'in_progress' && authStore.hasPermission('census:task:toggle')">结束</el-button>
+            <el-button link type="danger" size="small" @click="handleDelete(row)" v-if="row.status === 'draft' && authStore.hasPermission('census:task:delete')">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -64,6 +77,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { CENSUS_TASK_STATUS_OPTIONS } from '@/utils/constants'
 import { formatDate, formatDateTime } from '@/utils/formatters'
 import { normalizeRecordStatus } from '@/utils/reviewFlow'
+import { buildAssignmentStats, buildRecordStats as buildTaskRecordStats, parseJsonArray } from '@/utils/taskMetrics'
 import StatusTag from '@/components/common/StatusTag.vue'
 import db from '@/db'
 import { useAreaStore } from '@/stores/area'
@@ -75,18 +89,21 @@ const authStore = useAuthStore()
 const areaStore = useAreaStore()
 const subTaskCounts = ref({})
 const recordStatsByTask = ref({})
+const assignmentStatsByTask = ref({})
 const isSubTaskMode = computed(() => route.query.taskType === 'sub')
 
 onMounted(async () => {
   await areaStore.fetchAreas()
   await fetchTaskRows()
   await loadSubTaskCounts()
+  await loadAssignmentStats()
   await loadRecordStats()
 })
 
 watch(() => route.query.taskType, async () => {
   await fetchTaskRows()
   await loadSubTaskCounts()
+  await loadAssignmentStats()
   await loadRecordStats()
 })
 
@@ -107,7 +124,24 @@ function subTaskCount(taskId) {
 }
 
 function taskRecordStats(taskId) {
-  return recordStatsByTask.value[taskId] || { importedInReview: 0, spotInReview: 0, actualSpot: 0, actualImported: 0 }
+  return recordStatsByTask.value[taskId] || { importedCountyPending: 0, spotCountyPending: 0, actualSpot: 0, actualImported: 0 }
+}
+
+function taskAssignmentStats(taskId) {
+  return assignmentStatsByTask.value[taskId] || { unitCount: 0, allocatedSpot: 0, allocatedImported: 0 }
+}
+
+async function loadAssignmentStats() {
+  if (!isSubTaskMode.value) {
+    assignmentStatsByTask.value = {}
+    return
+  }
+  const next = {}
+  for (const task of store.tasks) {
+    const assignments = await db.censusAssignments.where('taskId').equals(Number(task.id)).toArray()
+    next[task.id] = buildAssignmentStats(assignments)
+  }
+  assignmentStatsByTask.value = next
 }
 
 async function loadRecordStats() {
@@ -122,7 +156,7 @@ async function loadRecordStats() {
     for (const assignment of assignments) {
       records.push(...await db.censusRecords.where('assignmentId').equals(Number(assignment.id)).toArray())
     }
-    next[task.id] = buildRecordStats(records)
+    next[task.id] = buildTaskRecordStats(records)
   }
   recordStatsByTask.value = next
 }
@@ -141,6 +175,7 @@ async function handleDelete(task) {
     ElMessage.success('任务已删除')
     await fetchTaskRows()
     await loadSubTaskCounts()
+    await loadAssignmentStats()
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') {
       ElMessage.error(error.message || '删除失败')
@@ -148,18 +183,31 @@ async function handleDelete(task) {
   }
 }
 
+async function handleStart(task) {
+  await store.startTask(task.id)
+  ElMessage.success('任务已启动')
+  await fetchTaskRows()
+  await loadSubTaskCounts()
+  await loadAssignmentStats()
+  await loadRecordStats()
+}
+
 async function handleComplete(task) {
   try {
-    const check = await validateTaskCanComplete(task.id)
+    const check = isSubTaskMode.value
+      ? await validateSubTaskCanComplete(task.id)
+      : await validateMainTaskCanComplete(task.id)
     if (!check.ok) {
       ElMessage.warning(check.message)
       return
     }
-    await ElMessageBox.confirm(`确定结束主任务「${task.title}」吗？结束后任务状态将变为已完成。`, '结束任务', { type: 'warning' })
+    await ElMessageBox.confirm(`确定结束${isSubTaskMode.value ? '子任务' : '主任务'}「${task.title}」吗？`, '结束任务', { type: 'warning' })
     await store.completeTask(task.id)
     ElMessage.success('任务已结束')
     await fetchTaskRows()
     await loadSubTaskCounts()
+    await loadAssignmentStats()
+    await loadRecordStats()
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') {
       ElMessage.error(error.message || '结束失败')
@@ -167,74 +215,64 @@ async function handleComplete(task) {
   }
 }
 
-async function validateTaskCanComplete(taskId) {
+async function validateMainTaskCanComplete(taskId) {
   const subTasks = await db.censusTasks.where('parentTaskId').equals(Number(taskId)).toArray()
   if (!subTasks.length) return { ok: false, message: '当前主任务还没有子任务，不能结束' }
-
-  const subTaskIds = subTasks.map(item => item.id)
-  const assignments = []
-  for (const subTaskId of subTaskIds) {
-    assignments.push(...await db.censusAssignments.where('taskId').equals(Number(subTaskId)).toArray())
-  }
-  if (!assignments.length) return { ok: false, message: '当前主任务还没有分派单位，不能结束' }
-
-  const assignmentIds = assignments.map(item => item.id)
-  const records = []
-  for (const assignmentId of assignmentIds) {
-    records.push(...await db.censusRecords.where('assignmentId').equals(Number(assignmentId)).toArray())
-  }
-  const availableRecords = records.filter(record => normalizeRecordStatus(record.status) === 'available')
-  const availableByUnit = new Set(availableRecords.map(record => Number(record.accommodationId)).filter(Boolean))
-  const availableByCreditCode = new Set(availableRecords.map(record => record.creditCode).filter(Boolean))
-  let expectedCount = 0
-  let unfinishedUnits = 0
-
-  for (const assignment of assignments) {
-    const ids = parseArray(assignment.targetAccommodationIds).map(Number).filter(Boolean)
-    expectedCount += ids.length
-    for (const id of ids) {
-      const unit = await db.accommodations.get(id)
-      const isDone = availableByUnit.has(id) || (unit?.creditCode && availableByCreditCode.has(unit.creditCode))
-      if (!isDone) unfinishedUnits += 1
-    }
-  }
-
-  const unfinishedRecords = records.filter(record => normalizeRecordStatus(record.status) !== 'available').length
-  if (expectedCount > 0 && unfinishedUnits > 0) {
-    return { ok: false, message: `还有 ${unfinishedUnits} 个任务单位未完成省级审核，不能结束任务` }
-  }
-  if (unfinishedRecords > 0) {
-    return { ok: false, message: `还有 ${unfinishedRecords} 条普查记录未完成审核，不能结束任务` }
-  }
+  const unfinished = subTasks.filter(task => task.status !== 'completed')
+  if (unfinished.length) return { ok: false, message: `还有 ${unfinished.length} 个子任务未结束，不能结束主任务` }
   return { ok: true }
 }
 
-function parseArray(raw) {
-  try { return Array.isArray(raw) ? raw : JSON.parse(raw || '[]') } catch { return [] }
-}
+async function validateSubTaskCanComplete(taskId) {
+  const assignments = []
+  assignments.push(...await db.censusAssignments.where('taskId').equals(Number(taskId)).toArray())
+  if (!assignments.length) return { ok: false, message: '当前子任务还没有分派单位，不能结束' }
 
-function buildRecordStats(records = []) {
-  return records.reduce((acc, record) => {
-    const status = normalizeRecordStatus(record.status)
-    const type = getRecordCheckType(record)
-    if (hasEnteredReview(status)) {
-      if (type === 'imported_catalog') acc.importedInReview += 1
-      if (type === 'catalog_spot_check') acc.spotInReview += 1
-    }
-    if (status === 'available') {
-      if (type === 'imported_catalog') acc.actualImported += 1
-      if (type === 'catalog_spot_check') acc.actualSpot += 1
-    }
-    return acc
-  }, { importedInReview: 0, spotInReview: 0, actualSpot: 0, actualImported: 0 })
-}
-
-function hasEnteredReview(status) {
-  return status && !['draft', 'county_rejected', 'city_rejected', 'province_rejected'].includes(status)
+  const records = []
+  for (const assignment of assignments) {
+    records.push(...await db.censusRecords.where('assignmentId').equals(Number(assignment.id)).toArray())
+  }
+  const assignmentStats = buildAssignmentStats(assignments)
+  const recordStats = buildTaskRecordStats(records)
+  if (assignmentStats.allocatedImported > recordStats.actualImported) {
+    return { ok: false, message: `还有 ${assignmentStats.allocatedImported - recordStats.actualImported} 个核查任务未进入市级待审，不能结束` }
+  }
+  if (assignmentStats.allocatedSpot > recordStats.actualSpot) {
+    return { ok: false, message: `实际抽查未达到分配抽查量，还差 ${assignmentStats.allocatedSpot - recordStats.actualSpot} 条，不能结束` }
+  }
+  return { ok: true }
 }
 
 function getRecordCheckType(record) {
   if (record.checkType) return record.checkType
   try { return JSON.parse(record.formData || '{}').checkType || '' } catch { return '' }
+}
+
+function countyCountByTask(task) {
+  return expandAssignedCountyCodes(parseJsonArray(task.assignedAreaCodes)).length
+}
+
+function expandAssignedCountyCodes(areaCodes = []) {
+  const selected = Array.isArray(areaCodes) ? areaCodes : []
+  const countySet = new Set()
+  const allCounties = areaStore.areas.filter(item => item.level === 3)
+  if (!selected.length || selected.includes('520000')) {
+    allCounties.forEach(item => countySet.add(item.code))
+    return [...countySet]
+  }
+  selected.forEach(code => {
+    const area = areaStore.getAreaByCode(code)
+    if (!area) return
+    if (area.level === 1 || code === '520000') {
+      allCounties.forEach(item => countySet.add(item.code))
+      return
+    }
+    if (area.level === 2 || code.endsWith('00')) {
+      areaStore.getCountiesByCity(code).forEach(item => countySet.add(item.code))
+      return
+    }
+    countySet.add(code)
+  })
+  return [...countySet]
 }
 </script>

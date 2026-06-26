@@ -5,6 +5,7 @@ import { useAuthStore } from './auth'
 import { filterByScope } from '@/utils/dataScope'
 import { getOptionLabel } from '@/utils/collectionSpec'
 import { normalizeRecordStatus } from '@/utils/reviewFlow'
+import { allocatedImportedCount, allocatedSpotCount } from '@/utils/taskMetrics'
 
 export const useStatisticsStore = defineStore('statistics', () => {
   const dashboardData = ref({
@@ -35,6 +36,7 @@ export const useStatisticsStore = defineStore('statistics', () => {
       const auth = useAuthStore()
       const allRaw = await db.accommodations.toArray()
       const allRecords = await db.censusRecords.toArray()
+      const allAssignments = await db.censusAssignments.toArray()
       const allUnitsFull = allRaw.filter(item => !item.deletedAt)
       // 区域范围过滤（统一走 dataScope）
       const allAccommodations = filterByScope(allUnitsFull, auth.userRole, auth.userAreaCode)
@@ -82,8 +84,8 @@ export const useStatisticsStore = defineStore('statistics', () => {
 
       dashboardData.value = {
         totalUnits: allUnitsFull.length,
-        spotCheckUnits: allUnitsFull.filter(item => item.checkType === 'catalog_spot_check').length,
-        importedCheckUnits: allUnitsFull.filter(item => item.checkType === 'imported_catalog').length,
+        spotCheckUnits: allAssignments.reduce((sum, item) => sum + allocatedSpotCount(item), 0),
+        importedCheckUnits: allAssignments.reduce((sum, item) => sum + allocatedImportedCount(item), 0),
         newUnits: allUnitsFull.filter(item => item.checkType === 'new_catalog').length,
         actualSpotCheckUnits: availableRecords.filter(item => getRecordCheckType(item) === 'catalog_spot_check').length,
         actualImportedCheckUnits: availableRecords.filter(item => getRecordCheckType(item) === 'imported_catalog').length,

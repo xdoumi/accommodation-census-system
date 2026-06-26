@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import db from '@/db'
 import { useAuthStore } from './auth'
 import { INITIAL_REVIEW_STATUS } from '@/utils/reviewFlow'
+import { parseJsonObject, sumCountyQuota } from '@/utils/taskMetrics'
 
 export const useCensusStore = defineStore('census', () => {
   const tasks = ref([])
@@ -151,6 +152,7 @@ export const useCensusStore = defineStore('census', () => {
     const now = new Date().toISOString()
     const areaCodes = JSON.parse(task.assignedAreaCodes || '[]')
     const assignmentAreaCodes = await getAssignmentAreaCodesFromSelection(areaCodes)
+    const spotQuotaByCounty = await normalizeSpotQuotaByCounty(task.spotCheckQuotaByCounty, areaCodes)
     const responsibleUserIds = JSON.parse(task.responsibleUserIds || '[]')
     const reviewerResolver = await createOrganizationReviewerResolver()
     const assignedTo = responsibleUserIds[0] || null
@@ -172,6 +174,8 @@ export const useCensusStore = defineStore('census', () => {
       const targetAccommodationIds = targetUnits.map(item => item.id)
       const spotCheckCount = targetUnits.filter(item => item.checkType === 'catalog_spot_check').length
       const importedCheckCount = targetUnits.filter(item => item.checkType === 'imported_catalog').length
+      const targetCountyCodes = [...new Set(targetUnits.map(item => String(item.countyCode || '')).filter(Boolean))]
+      const allocatedSpotCheckCount = sumCountyQuota(spotQuotaByCounty, targetCountyCodes)
       const reviewers = reviewerResolver(areaCode)
       reviewers.cityAdminIds.forEach(id => taskCityAdminIds.add(id))
       reviewers.countyAdminIds.forEach(id => taskCountyAdminIds.add(id))
@@ -179,6 +183,7 @@ export const useCensusStore = defineStore('census', () => {
         targetAccommodationIds: JSON.stringify(targetAccommodationIds),
         unitCount: targetAccommodationIds.length,
         spotCheckCount,
+        allocatedSpotCheckCount,
         importedCheckCount,
       }
       if (!existing) {
@@ -391,6 +396,25 @@ export const useCensusStore = defineStore('census', () => {
     return list
   }
 
+  async function normalizeSpotQuotaByCounty(rawQuota, selectedAreaCodes = []) {
+    const quota = parseJsonObject(rawQuota)
+    const assignmentAreaCodes = await getAssignmentAreaCodesFromSelection(selectedAreaCodes)
+    const normalized = {}
+    for (const areaCode of assignmentAreaCodes) {
+      const units = await getUnitsForAssignedArea(areaCode)
+      const counties = [...new Set(units.map(item => String(item.countyCode || '')).filter(Boolean))]
+      counties.forEach(countyCode => {
+        const explicit = Number(quota[countyCode])
+        if (Number.isInteger(explicit) && explicit >= 0) {
+          normalized[countyCode] = explicit
+          return
+        }
+        normalized[countyCode] = units.filter(item => String(item.countyCode) === countyCode && item.checkType === 'catalog_spot_check').length
+      })
+    }
+    return normalized
+  }
+
   async function hydrateAssignmentStats(list = []) {
     const result = []
     for (const assignment of list) {
@@ -403,6 +427,7 @@ export const useCensusStore = defineStore('census', () => {
         targetAccommodationIds: JSON.stringify(targetUnits.map(item => item.id)),
         unitCount: targetUnits.length,
         spotCheckCount: targetUnits.filter(item => item.checkType === 'catalog_spot_check').length,
+        allocatedSpotCheckCount: Number(assignment.allocatedSpotCheckCount ?? targetUnits.filter(item => item.checkType === 'catalog_spot_check').length),
         importedCheckCount: targetUnits.filter(item => item.checkType === 'imported_catalog').length,
       }
       await db.censusAssignments.update(assignment.id, patch)

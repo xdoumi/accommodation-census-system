@@ -17,22 +17,19 @@
       </div>
     </el-card>
 
-    <!-- AI 自然语言查询 -->
-    <AiNlQueryBox v-if="aiSettings.featureFlags.nlQuery" />
-
     <!-- KPI 概览 -->
     <el-row :gutter="16" style="margin-bottom: 20px;">
       <el-col :span="6">
         <KpiCard icon="OfficeBuilding" :value="data.totalUnits" label="住宿单位总数" color="#409eff" />
       </el-col>
       <el-col :span="6">
-        <KpiCard icon="Search" :value="data.spotCheckUnits" label="抽查单位数" color="#67c23a" secondary-label="实际抽查数" :secondary-value="data.actualSpotCheckUnits" />
+        <KpiCard icon="Search" :value="data.spotCheckUnits" label="分配抽查单位数" color="#67c23a" />
       </el-col>
       <el-col :span="6">
-        <KpiCard icon="DocumentChecked" :value="data.importedCheckUnits" label="核查单位数" color="#e6a23c" secondary-label="实际核查数" :secondary-value="data.actualImportedCheckUnits" />
+        <KpiCard icon="DocumentChecked" :value="data.importedCheckUnits" label="分配核查单位数" color="#e6a23c" secondary-label="实际核查数" :secondary-value="data.actualImportedCheckUnits" />
       </el-col>
       <el-col :span="6">
-        <KpiCard icon="Plus" :value="data.newUnits" label="新增单位数" color="#f56c6c" secondary-label="实际新增数" :secondary-value="data.actualNewUnits" />
+        <KpiCard icon="Plus" :value="data.newUnits" label="新增单位数" color="#f56c6c" />
       </el-col>
     </el-row>
 
@@ -46,10 +43,23 @@
             </div>
           </template>
           <div class="progress-main">
-            <strong>{{ executionProgress }}%</strong>
-            <span>任务数量 {{ importedReviewTaskCount }}，完成 {{ completedImportedReviewCount }}</span>
+            <strong>{{ importedExecutionProgress }}%</strong>
+            <span>分配核查量 {{ allocatedImportedCount }}，任务执行量 {{ importedExecutionCount }}</span>
           </div>
-          <el-progress :percentage="executionProgress" :stroke-width="10" />
+          <el-progress :percentage="importedExecutionProgress" :stroke-width="10" />
+        </el-card>
+        <el-card shadow="never" class="progress-card secondary-progress">
+          <template #header>
+            <div class="progress-header">
+              <span>抽查任务执行进度</span>
+              <el-button link type="primary" @click="router.push({ path: '/census', query: { taskType: 'sub' } })">查看任务</el-button>
+            </div>
+          </template>
+          <div class="progress-main">
+            <strong>{{ spotExecutionProgress }}%</strong>
+            <span>分配抽查量 {{ allocatedSpotCount }}，任务执行量 {{ spotExecutionCount }}</span>
+          </div>
+          <el-progress :percentage="spotExecutionProgress" :stroke-width="10" color="#67c23a" />
         </el-card>
       </el-col>
       <el-col :span="12">
@@ -106,21 +116,19 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useStatisticsStore } from '@/stores/statistics'
 import { useCensusStore } from '@/stores/census'
-import { useAiSettingsStore } from '@/stores/aiSettings'
 import { storeToRefs } from 'pinia'
 import { CENSUS_TASK_STATUS_OPTIONS, getRoleLabel } from '@/utils/constants'
 import { formatDate } from '@/utils/formatters'
 import { normalizeRecordStatus } from '@/utils/reviewFlow'
+import { allocatedImportedCount as assignmentImportedCount, allocatedSpotCount as assignmentSpotCount, isCountyPending } from '@/utils/taskMetrics'
 import KpiCard from '@/components/charts/KpiCard.vue'
 import StatusTag from '@/components/common/StatusTag.vue'
-import AiNlQueryBox from '@/components/ai/AiNlQueryBox.vue'
 import db from '@/db'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const statisticsStore = useStatisticsStore()
 const censusStore = useCensusStore()
-const aiSettings = useAiSettingsStore()
 
 const { dashboardData: data } = storeToRefs(statisticsStore)
 const recentTasks = ref([])
@@ -138,11 +146,15 @@ const currentDate = computed(() => {
   const d = new Date()
   return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`
 })
-const importedReviewRecords = computed(() => scopedRecords.value.filter(item => getRecordCheckType(item) === 'imported_catalog' && hasEnteredReview(item.status)))
-const importedReviewTaskCount = computed(() => importedReviewRecords.value.length)
-const completedImportedReviewCount = computed(() => importedReviewRecords.value.filter(item => item.status === 'available' || item.status === 'approved').length)
-const executionProgress = computed(() => importedReviewTaskCount.value
-  ? Math.round(completedImportedReviewCount.value / importedReviewTaskCount.value * 100)
+const allocatedImportedCount = computed(() => scopedAssignments.value.reduce((sum, item) => sum + assignmentImportedCount(item), 0))
+const allocatedSpotCount = computed(() => scopedAssignments.value.reduce((sum, item) => sum + assignmentSpotCount(item), 0))
+const importedExecutionCount = computed(() => scopedRecords.value.filter(item => getRecordCheckType(item) === 'imported_catalog' && isCountyPending(item.status)).length)
+const spotExecutionCount = computed(() => scopedRecords.value.filter(item => getRecordCheckType(item) === 'catalog_spot_check' && isCountyPending(item.status)).length)
+const importedExecutionProgress = computed(() => allocatedImportedCount.value
+  ? Math.min(100, Math.round(importedExecutionCount.value / allocatedImportedCount.value * 100))
+  : 0)
+const spotExecutionProgress = computed(() => allocatedSpotCount.value
+  ? Math.min(100, Math.round(spotExecutionCount.value / allocatedSpotCount.value * 100))
   : 0)
 const reviewStages = computed(() => [
   buildReviewStage('county', '县级审核', '#1a5fc5'),
@@ -171,10 +183,6 @@ async function loadScopedRecords() {
     .map(item => ({ ...item, status: normalizeRecordStatus(item.status), assignment: assignmentMap.get(item.assignmentId) }))
 }
 
-function hasEnteredReview(status) {
-  return status && !['draft', 'county_rejected', 'city_rejected', 'province_rejected'].includes(status)
-}
-
 function getRecordCheckType(record) {
   if (record.checkType) return record.checkType
   try { return JSON.parse(record.formData || '{}').checkType || '' } catch { return '' }
@@ -201,6 +209,10 @@ function buildReviewStage(key, label, color) {
 <style scoped>
 .progress-card {
   border: 1px solid #e8edf5;
+}
+
+.secondary-progress {
+  margin-top: 16px;
 }
 
 .progress-header {

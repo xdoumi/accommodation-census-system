@@ -3,8 +3,8 @@
     <el-card shadow="never" class="toolbar-card">
       <div class="page-header">
         <div>
-          <span class="page-title">组织机构管理</span>
-          <p class="page-subtitle">按省厅、市州文旅局、县级文旅局、普查人员四级维护组织，并分配责任人员。</p>
+          <span class="page-title">组织机构</span>
+          <p class="page-subtitle">按省厅、市州文旅局、县级文旅局三级维护组织，并分配责任人员。</p>
         </div>
         <div class="header-actions">
           <el-button
@@ -137,7 +137,7 @@
               :key="item.id"
               :label="`${item.name}（第${item.level}级）`"
               :value="item.id"
-              :disabled="item.id === form.id || item.level >= 4"
+              :disabled="item.id === form.id || item.level >= 3"
             />
           </el-select>
         </el-form-item>
@@ -296,8 +296,8 @@ const bulkTargetOptions = [
 
 const flatRows = computed(() => organizations.value.slice().sort((a, b) => a.level - b.level || a.id - b.id))
 const treeRows = computed(() => buildTree(flatRows.value))
-const organizationDefaultExpandedKeys = computed(() => flatRows.value.filter(item => Number(item.level) <= 2).map(item => item.id))
-const parentOptions = computed(() => flatRows.value.filter(item => item.level < 4))
+const organizationDefaultExpandedKeys = computed(() => flatRows.value.filter(item => Number(item.level) === 1).map(item => item.id))
+const parentOptions = computed(() => flatRows.value.filter(item => item.level < 3))
 const areaOptions = computed(() => areaStore.areas.filter(area => [1, 2, 3].includes(area.level)))
 const bulkAreaOptions = computed(() => {
   if (bulkForm.targetType === 'city_admin') return areaStore.areas.filter(area => area.level === 2)
@@ -315,7 +315,7 @@ async function loadData() {
     db.organizations?.toArray() || [],
     db.users.toArray(),
   ])
-  organizations.value = orgRows
+  organizations.value = orgRows.filter(item => Number(item.level || 1) <= 3)
   users.value = userRows.filter(user => user.status !== 'disabled')
   if (activeOrg.value) {
     activeOrg.value = organizations.value.find(item => item.id === activeOrg.value.id) || null
@@ -341,7 +341,7 @@ function openCreateDialog(parent = null) {
     id: null,
     name: '',
     parentId: parent?.id || null,
-    level: parent ? Math.min(Number(parent.level || 1) + 1, 4) : 1,
+    level: parent ? Math.min(Number(parent.level || 1) + 1, 3) : 1,
     areaCode: parent?.areaCode || '',
     areaName: parent?.areaName || '',
     responsibleUserIds: [],
@@ -387,7 +387,7 @@ function handleBulkAreaTreeCheck() {
 
 function syncLevelFromParent(parentId) {
   const parent = organizations.value.find(item => item.id === parentId)
-  form.level = parent ? Math.min(Number(parent.level || 1) + 1, 4) : 1
+  form.level = parent ? Math.min(Number(parent.level || 1) + 1, 3) : 1
   if (parent && !form.areaCode) {
     form.areaCode = parent.areaCode || ''
     form.areaName = parent.areaName || ''
@@ -401,8 +401,8 @@ function syncAreaName() {
 async function submitForm() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
-  if (form.level > 4) {
-    ElMessage.error('组织机构最多支持4级')
+  if (form.level > 3) {
+    ElMessage.error('组织机构最多支持3级')
     return
   }
   submitting.value = true
@@ -553,28 +553,11 @@ async function ensureCountyOrganization(countyCode, now) {
 }
 
 async function ensureEnumeratorOrganization(countyCode, now) {
-  const countyOrg = await ensureCountyOrganization(countyCode, now)
-  const existing = organizations.value.find(item => item.level === 4 && item.parentId === countyOrg.id && item.areaCode === countyCode)
-  if (existing) return existing
-  const county = areaStore.areas.find(area => area.code === countyCode)
-  const org = {
-    name: `${county?.name || countyCode}普查人员`,
-    parentId: countyOrg.id,
-    level: 4,
-    areaCode: countyCode,
-    areaName: county?.name || countyCode,
-    responsibleUserIds: '[]',
-    status: 'active',
-    createdAt: now,
-    updatedAt: now,
-  }
-  org.id = await db.organizations.add(org)
-  organizations.value.push(org)
-  return org
+  return ensureCountyOrganization(countyCode, now)
 }
 
 function canCreateChild(row) {
-  return authStore.hasPermission('system:organization:create') && Number(row.level || 1) < 4
+  return authStore.hasPermission('system:organization:create') && Number(row.level || 1) < 3
 }
 
 function parseIds(raw) {

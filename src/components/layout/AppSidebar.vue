@@ -54,7 +54,7 @@
         </template>
         <el-menu-item index="/system/users" v-if="authStore.hasPermission('system:user:view')">用户管理</el-menu-item>
         <el-menu-item index="/system/roles" v-if="authStore.hasPermission('system:role:view')">角色权限</el-menu-item>
-        <el-menu-item index="/system/organizations" v-if="authStore.hasPermission('system:organization:view')">组织机构管理</el-menu-item>
+        <el-menu-item index="/system/organizations" v-if="authStore.hasPermission('system:organization:view')">组织机构</el-menu-item>
         <el-menu-item index="/system/ai-settings" v-if="authStore.hasPermission('system:ai:manage')">AI 设置</el-menu-item>
       </el-sub-menu>
     </el-menu>

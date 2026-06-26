@@ -32,7 +32,7 @@
           <template #header>
             <div class="card-header">
               <span>子任务</span>
-              <el-button type="primary" @click="openSubTaskDialog" v-if="authStore.hasPermission('census:create')">创建子任务</el-button>
+              <el-button type="primary" @click="openSubTaskDialog" v-if="authStore.hasPermission('census:task:create_sub')">创建子任务</el-button>
             </div>
           </template>
           <el-table :data="store.subTasks" border stripe>
@@ -43,22 +43,22 @@
             <el-table-column label="单位数量" width="100" align="center">
               <template #default="{ row }">{{ subTaskStats(row.id).unitCount }}</template>
             </el-table-column>
-            <el-table-column label="抽查数量" width="110" align="center">
-              <template #default="{ row }">{{ subTaskStats(row.id).spotCheckCount }}</template>
+            <el-table-column label="分配抽查量" width="120" align="center">
+              <template #default="{ row }">{{ subTaskStats(row.id).allocatedSpot }}</template>
             </el-table-column>
-            <el-table-column label="核查数量" width="110" align="center">
-              <template #default="{ row }">{{ subTaskStats(row.id).importedCheckCount }}</template>
-            </el-table-column>
-            <el-table-column label="填报中核查" width="120" align="center">
-              <template #default="{ row }">{{ subTaskAuditStats(row.id).importedInReview }}</template>
-            </el-table-column>
-            <el-table-column label="填报中抽查" width="120" align="center">
-              <template #default="{ row }">{{ subTaskAuditStats(row.id).spotInReview }}</template>
+            <el-table-column label="抽查-县级待审" width="130" align="center">
+              <template #default="{ row }">{{ subTaskAuditStats(row.id).spotCountyPending }}</template>
             </el-table-column>
             <el-table-column label="实际抽查" width="110" align="center">
               <template #default="{ row }">{{ subTaskAuditStats(row.id).actualSpot }}</template>
             </el-table-column>
-            <el-table-column label="实核查" width="100" align="center">
+            <el-table-column label="分配核查量" width="120" align="center">
+              <template #default="{ row }">{{ subTaskStats(row.id).allocatedImported }}</template>
+            </el-table-column>
+            <el-table-column label="核查-县级待审" width="130" align="center">
+              <template #default="{ row }">{{ subTaskAuditStats(row.id).importedCountyPending }}</template>
+            </el-table-column>
+            <el-table-column label="实际核查" width="110" align="center">
               <template #default="{ row }">{{ subTaskAuditStats(row.id).actualImported }}</template>
             </el-table-column>
             <el-table-column prop="responsibleUserNames" label="责任人" min-width="180" show-overflow-tooltip />
@@ -68,13 +68,14 @@
             <el-table-column label="截止日期" width="120" align="center">
               <template #default="{ row }">{{ formatDate(row.deadline) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="240" align="center">
+            <el-table-column label="操作" width="300" align="center">
               <template #default="{ row }">
                 <el-button link type="primary" size="small" @click="router.push(`/census/${row.id}`)">查看</el-button>
-                <el-button link type="primary" size="small" @click="openEditSubTaskDialog(row)" v-if="authStore.hasPermission('census:update')">编辑</el-button>
+                <el-button link type="primary" size="small" @click="openEditSubTaskDialog(row)" v-if="authStore.hasPermission('census:task:update')">编辑</el-button>
                 <el-button link type="primary" size="small" @click="openTaskUnits(row)">单位详情</el-button>
-                <el-button link type="success" size="small" @click="store.startTask(row.id); refresh()" v-if="row.status === 'published' && authStore.hasPermission('census:update')">启动</el-button>
-                <el-button link type="danger" size="small" @click="removeSubTask(row)" v-if="row.status !== 'in_progress' && authStore.hasPermission('census:delete')">删除</el-button>
+                <el-button link type="success" size="small" @click="startSubTask(row)" v-if="row.status !== 'in_progress' && authStore.hasPermission('census:task:toggle')">启动</el-button>
+                <el-button link type="warning" size="small" @click="completeSubTask(row)" v-if="row.status === 'in_progress' && authStore.hasPermission('census:task:toggle')">结束</el-button>
+                <el-button link type="danger" size="small" @click="removeSubTask(row)" v-if="row.status !== 'in_progress' && authStore.hasPermission('census:task:delete')">删除</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -101,6 +102,9 @@
             </el-table-column>
             <el-table-column label="来源" width="180" align="center" show-overflow-tooltip>
               <template #default="{ row }">{{ getOptionLabel('catalogSource', row.catalogSource) || '-' }}</template>
+            </el-table-column>
+            <el-table-column label="当前状态" width="130" align="center">
+              <template #default="{ row }"><StatusTag :value="row.recordStatus || 'draft'" :options="CENSUS_RECORD_STATUS_OPTIONS" /></template>
             </el-table-column>
           </el-table>
         </el-card>
@@ -163,6 +167,26 @@
         </el-form-item>
         <el-form-item label="分配区域" prop="assignedAreaCodes">
           <AreaAssignTree v-model="subTaskForm.assignedAreaCodes" />
+        </el-form-item>
+        <el-form-item label="区县抽查量">
+          <el-table :data="quotaCountyRows" border size="small" empty-text="请先选择分配区域">
+            <el-table-column label="市州" width="140">
+              <template #default="{ row }">{{ areaStore.getAreaName(row.parentCode) || '-' }}</template>
+            </el-table-column>
+            <el-table-column prop="name" label="区县" min-width="160" />
+            <el-table-column label="抽查量" width="180" align="center">
+              <template #default="{ row }">
+                <el-input-number
+                  v-model="subTaskForm.spotCheckQuotaByCounty[row.code]"
+                  :min="0"
+                  :precision="0"
+                  :step="1"
+                  controls-position="right"
+                  style="width: 130px"
+                />
+              </template>
+            </el-table-column>
+          </el-table>
         </el-form-item>
         <el-form-item label="普查人员" prop="responsibleUserIds">
           <el-select
@@ -233,6 +257,9 @@
         <el-table-column label="来源" width="180" align="center" show-overflow-tooltip>
           <template #default="{ row }">{{ getOptionLabel('catalogSource', row.catalogSource) || '-' }}</template>
         </el-table-column>
+        <el-table-column label="当前状态" width="130" align="center">
+          <template #default="{ row }"><StatusTag :value="row.recordStatus || 'draft'" :options="CENSUS_RECORD_STATUS_OPTIONS" /></template>
+        </el-table-column>
       </el-table>
       <div class="drawer-pagination" v-if="unitDrawerPagination.total > 0">
         <el-pagination
@@ -261,6 +288,7 @@ import { formatDate, formatDateTime } from '@/utils/formatters'
 import { COLLECTION_FIELD_MAP, COLLECTION_MODULES, getOptionLabel, getVisibleModuleFields, shouldSkipBusinessModule } from '@/utils/collectionSpec'
 import { buildReviewPatch, canReviewRecord, getReviewStepForRole, isReviewerInScope, normalizeRecordStatus, submitForCountyReviewPatch } from '@/utils/reviewFlow'
 import { archiveCensusRecord, publishRecordToAccommodation } from '@/utils/accommodationWorkflow'
+import { buildAssignmentStats, buildRecordStats as buildTaskRecordStats, hasEnteredCityReview, parseJsonObject } from '@/utils/taskMetrics'
 import db from '@/db'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import StatusTag from '@/components/common/StatusTag.vue'
@@ -285,6 +313,7 @@ const submittingSubTask = ref(false)
 const editingSubTaskId = ref(null)
 const subTaskFormRef = ref(null)
 const enumeratorUsers = ref([])
+const spotDefaultByCounty = ref({})
 
 const subTaskForm = reactive({
   title: '',
@@ -292,6 +321,7 @@ const subTaskForm = reactive({
   description: '',
   assignedAreaCodes: [],
   responsibleUserIds: [],
+  spotCheckQuotaByCounty: {},
 })
 
 const subTaskRules = {
@@ -305,6 +335,10 @@ const isMainTask = computed(() => (store.currentTask?.taskType || 'main') === 'm
 const backPath = computed(() => isMainTask.value ? '/census' : `/census/${store.currentTask?.parentTaskId || ''}`)
 const scopeCodes = computed(() => parseArray(store.currentTask?.scopeAreaCodes || store.currentTask?.assignedAreaCodes))
 const currentReviewStep = computed(() => getReviewStepForRole(authStore.userRole))
+const quotaCountyRows = computed(() => expandAssignedCountyCodes(subTaskForm.assignedAreaCodes)
+  .map(code => areaStore.getAreaByCode(code))
+  .filter(Boolean)
+  .sort((a, b) => String(a.parentCode).localeCompare(String(b.parentCode)) || String(a.code).localeCompare(String(b.code))))
 
 const activeForm = computed(() => {
   if (!activeRecord.value?.formData) return {}
@@ -335,6 +369,7 @@ const pagedUnitDrawerRows = computed(() => {
 
 async function refresh() {
   await areaStore.fetchAreas()
+  await loadSpotDefaults()
   await store.fetchTaskDetail(route.params.id)
   await loadUsers()
   if (isMainTask.value) await loadSubTaskRecordStats()
@@ -356,6 +391,7 @@ function openSubTaskDialog() {
   subTaskForm.description = ''
   subTaskForm.assignedAreaCodes = []
   subTaskForm.responsibleUserIds = []
+  subTaskForm.spotCheckQuotaByCounty = {}
   subTaskDialogVisible.value = true
 }
 
@@ -366,6 +402,8 @@ function openEditSubTaskDialog(task) {
   subTaskForm.description = task.description || ''
   subTaskForm.assignedAreaCodes = parseArray(task.assignedAreaCodes)
   subTaskForm.responsibleUserIds = parseArray(task.responsibleUserIds)
+  subTaskForm.spotCheckQuotaByCounty = parseJsonObject(task.spotCheckQuotaByCounty)
+  syncSpotQuotaDefaults()
   subTaskDialogVisible.value = true
 }
 
@@ -383,6 +421,7 @@ async function submitSubTask() {
       assignedAreaCodes: JSON.stringify(subTaskForm.assignedAreaCodes),
       responsibleUserIds: JSON.stringify(responsibleUserIds),
       responsibleUserNames: selectedUsers.map(user => user.realName).join('、'),
+      spotCheckQuotaByCounty: JSON.stringify(normalizedSpotQuota()),
     }
     if (editingSubTaskId.value) {
       await store.updateSubTask(editingSubTaskId.value, payload)
@@ -397,6 +436,47 @@ async function submitSubTask() {
   } finally {
     submittingSubTask.value = false
   }
+}
+
+watch(() => subTaskForm.assignedAreaCodes.slice(), () => {
+  syncSpotQuotaDefaults()
+}, { deep: true })
+
+function syncSpotQuotaDefaults() {
+  const current = { ...subTaskForm.spotCheckQuotaByCounty }
+  const selectedCodes = quotaCountyRows.value.map(item => item.code)
+  const selectedSet = new Set(selectedCodes)
+  Object.keys(current).forEach(code => {
+    if (!selectedSet.has(code)) delete current[code]
+  })
+  selectedCodes.forEach(code => {
+    const explicit = Number(current[code])
+    if (Number.isInteger(explicit) && explicit >= 0) return
+    current[code] = defaultSpotQuotaForCounty(code)
+  })
+  subTaskForm.spotCheckQuotaByCounty = current
+}
+
+function normalizedSpotQuota() {
+  syncSpotQuotaDefaults()
+  return Object.fromEntries(Object.entries(subTaskForm.spotCheckQuotaByCounty).map(([code, value]) => {
+    const next = Number(value)
+    return [code, Number.isInteger(next) && next >= 0 ? next : 0]
+  }))
+}
+
+function defaultSpotQuotaForCounty(countyCode) {
+  return Number(spotDefaultByCounty.value[countyCode] || 0)
+}
+
+async function loadSpotDefaults() {
+  const units = await db.accommodations.filter(item => !item.deletedAt && item.checkType === 'catalog_spot_check').toArray()
+  spotDefaultByCounty.value = units.reduce((acc, unit) => {
+    const code = String(unit.countyCode || '')
+    if (!code) return acc
+    acc[code] = (acc[code] || 0) + 1
+    return acc
+  }, {})
 }
 
 async function removeSubTask(task) {
@@ -434,26 +514,28 @@ async function loadTaskUnits() {
   store.assignments.forEach(assignment => {
     parseArray(assignment.targetAccommodationIds).forEach(id => ids.add(Number(id)))
   })
+  const allRecords = []
+  for (const assignment of store.assignments) {
+    allRecords.push(...await db.censusRecords.where('assignmentId').equals(Number(assignment.id)).toArray())
+  }
+  const recordByAccommodationId = new Map(allRecords.map(record => [Number(record.accommodationId), record]))
+  const recordByCreditCode = new Map(allRecords.map(record => [record.creditCode, record]).filter(([code]) => code))
   const units = []
   for (const id of ids) {
     const unit = await db.accommodations.get(id)
-    if (unit) units.push(unit)
+    const record = recordByAccommodationId.get(Number(id)) || (unit?.creditCode ? recordByCreditCode.get(unit.creditCode) : null)
+    if (unit) units.push({ ...unit, recordStatus: normalizeRecordStatus(record?.status || 'draft') })
   }
   taskUnits.value = units
 }
 
 function subTaskStats(taskId) {
   const list = store.assignments.filter(item => item.taskId === taskId)
-  return list.reduce((acc, item) => {
-    acc.unitCount += Number(item.unitCount || 0)
-    acc.spotCheckCount += Number(item.spotCheckCount || 0)
-    acc.importedCheckCount += Number(item.importedCheckCount || 0)
-    return acc
-  }, { unitCount: 0, spotCheckCount: 0, importedCheckCount: 0 })
+  return buildAssignmentStats(list)
 }
 
 function subTaskAuditStats(taskId) {
-  return subTaskRecordStats.value[taskId] || { importedInReview: 0, spotInReview: 0, actualSpot: 0, actualImported: 0 }
+  return subTaskRecordStats.value[taskId] || { importedCountyPending: 0, spotCountyPending: 0, actualSpot: 0, actualImported: 0 }
 }
 
 async function loadSubTaskRecordStats() {
@@ -465,29 +547,9 @@ async function loadSubTaskRecordStats() {
     for (const assignmentId of assignmentIds) {
       records.push(...await db.censusRecords.where('assignmentId').equals(Number(assignmentId)).toArray())
     }
-    next[task.id] = buildRecordStats(records)
+    next[task.id] = buildTaskRecordStats(records)
   }
   subTaskRecordStats.value = next
-}
-
-function buildRecordStats(records = []) {
-  return records.reduce((acc, record) => {
-    const status = normalizeRecordStatus(record.status)
-    const type = getRecordCheckType(record)
-    if (hasEnteredReview(status)) {
-      if (type === 'imported_catalog') acc.importedInReview += 1
-      if (type === 'catalog_spot_check') acc.spotInReview += 1
-    }
-    if (status === 'available') {
-      if (type === 'imported_catalog') acc.actualImported += 1
-      if (type === 'catalog_spot_check') acc.actualSpot += 1
-    }
-    return acc
-  }, { importedInReview: 0, spotInReview: 0, actualSpot: 0, actualImported: 0 })
-}
-
-function hasEnteredReview(status) {
-  return status && !['draft', 'county_rejected', 'city_rejected', 'province_rejected'].includes(status)
 }
 
 function getRecordCheckType(record) {
@@ -503,15 +565,57 @@ async function openTaskUnits(task) {
   const assignments = await db.censusAssignments.where('taskId').equals(Number(task.id)).toArray()
   const ids = new Set()
   assignments.forEach(assignment => parseArray(assignment.targetAccommodationIds).forEach(id => ids.add(Number(id))))
+  const records = []
+  for (const assignment of assignments) {
+    records.push(...await db.censusRecords.where('assignmentId').equals(Number(assignment.id)).toArray())
+  }
+  const recordByAccommodationId = new Map(records.map(record => [Number(record.accommodationId), record]))
+  const recordByCreditCode = new Map(records.map(record => [record.creditCode, record]).filter(([code]) => code))
   const units = []
   for (const id of ids) {
     const unit = await db.accommodations.get(id)
-    if (unit) units.push(unit)
+    const record = recordByAccommodationId.get(Number(id)) || (unit?.creditCode ? recordByCreditCode.get(unit.creditCode) : null)
+    if (unit) units.push({ ...unit, recordStatus: normalizeRecordStatus(record?.status || 'draft') })
   }
   unitDrawerRows.value = units
   unitDrawerPagination.page = 1
   unitDrawerPagination.total = units.length
   unitDrawerVisible.value = true
+}
+
+async function startSubTask(task) {
+  await store.startTask(task.id)
+  ElMessage.success('子任务已启动')
+  await refresh()
+}
+
+async function completeSubTask(task) {
+  const check = await validateSubTaskCanComplete(task.id)
+  if (!check.ok) {
+    ElMessage.warning(check.message)
+    return
+  }
+  await ElMessageBox.confirm(`确定结束子任务「${task.title}」吗？`, '结束子任务', { type: 'warning' })
+  await store.completeTask(task.id)
+  ElMessage.success('子任务已结束')
+  await refresh()
+}
+
+async function validateSubTaskCanComplete(taskId) {
+  const assignments = await db.censusAssignments.where('taskId').equals(Number(taskId)).toArray()
+  const assignmentStats = buildAssignmentStats(assignments)
+  const records = []
+  for (const assignment of assignments) {
+    records.push(...await db.censusRecords.where('assignmentId').equals(Number(assignment.id)).toArray())
+  }
+  const recordStats = buildTaskRecordStats(records)
+  if (assignmentStats.allocatedImported > recordStats.actualImported) {
+    return { ok: false, message: `还有 ${assignmentStats.allocatedImported - recordStats.actualImported} 个核查任务未进入市级待审，不能结束` }
+  }
+  if (assignmentStats.allocatedSpot > recordStats.actualSpot) {
+    return { ok: false, message: `实际抽查未达到分配抽查量，还差 ${assignmentStats.allocatedSpot - recordStats.actualSpot} 条，不能结束` }
+  }
+  return { ok: true }
 }
 
 function handleUnitDrawerPageChange(page) {
@@ -583,6 +687,16 @@ async function reviewRecord(row, action) {
 
 function parseArray(raw) {
   try { return Array.isArray(raw) ? raw : JSON.parse(raw || '[]') } catch { return [] }
+}
+
+function taskUnitsByArea(areaCode) {
+  const code = String(areaCode || '')
+  return taskUnits.value.filter(item => {
+    const itemCounty = String(item.countyCode || '')
+    const itemCity = String(item.cityCode || '')
+    if (code.endsWith('00')) return itemCity === code
+    return itemCounty === code
+  })
 }
 
 function expandAssignedCountyCodes(areaCodes = []) {
