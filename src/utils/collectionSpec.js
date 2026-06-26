@@ -75,6 +75,12 @@ export const COLLECTION_MODULES = [
     fields: ['storefrontPhotos', 'groupPhotos'],
   },
   {
+    key: 'H',
+    title: '普查',
+    shortTitle: '普查',
+    fields: ['censusEnumeratorName', 'censusRemark'],
+  },
+  {
     key: 'SIGN',
     title: '签字确认',
     shortTitle: '签字确认',
@@ -313,9 +319,11 @@ export const COLLECTION_FIELD_MAP = {
   otaOther: { code: 'F1-a', label: '其他平台名称', requiredWhen: data => data.otaPlatforms?.includes('other'), type: 'text' },
   storefrontPhotos: { code: 'G1', label: '住宿单位门头照', required: true, type: 'photos' },
   groupPhotos: { code: 'G2', label: '核查人员与门头合影', required: true, type: 'photos' },
-  managerSignature: { code: 'H1', label: '住宿单位负责人签字', required: true, type: 'signature' },
+  censusEnumeratorName: { code: 'H1', label: '普查人员', required: false, type: 'text', maxLength: 50 },
+  censusRemark: { code: 'H2', label: '备注', required: false, type: 'textarea', maxLength: 500 },
+  managerSignature: { code: 'I1', label: '住宿单位负责人签字', required: true, type: 'signature' },
   managerSignatureAt: {
-    code: 'H2',
+    code: 'I2',
     label: '签字时间',
     type: 'text',
     visibleWhen: data => Boolean(data.managerSignature || data.managerSignatureAt),
@@ -432,6 +440,8 @@ export function createEmptyCollectionForm() {
     otaOther: '',
     storefrontPhotos: [],
     groupPhotos: [],
+    censusEnumeratorName: '',
+    censusRemark: '',
     managerSignature: '',
     managerSignatureAt: '',
     sourceCatalogMatched: false,
@@ -495,6 +505,8 @@ export function buildCollectionFormFromUnit(unit = {}) {
   form.otaOther = unit.otaOther || (form.otaPlatforms.includes('other') ? inferOtaOther(unit) : '')
   form.storefrontPhotos = parseStoredArray(unit.storefrontPhotos)
   form.groupPhotos = parseStoredArray(unit.groupPhotos)
+  form.censusEnumeratorName = unit.censusEnumeratorName || ''
+  form.censusRemark = unit.censusRemark || ''
   form.managerSignature = unit.managerSignature || ''
   form.managerSignatureAt = unit.managerSignatureAt || ''
   form.sourceCatalogMatched = Boolean(unit.id)
@@ -641,6 +653,8 @@ export function extractAccommodationPatch(form) {
     businessLicensePhotoName: form.businessLicensePhotoName,
     storefrontPhotos: JSON.stringify(form.storefrontPhotos || []),
     groupPhotos: JSON.stringify(form.groupPhotos || []),
+    censusEnumeratorName: form.censusEnumeratorName,
+    censusRemark: form.censusRemark,
     managerSignature: form.managerSignature,
     managerSignatureAt: form.managerSignatureAt,
     subjectType: form.subjectType,

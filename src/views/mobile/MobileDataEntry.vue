@@ -241,6 +241,33 @@
           @change="value => form.groupPhotos = value"
         />
       </template>
+
+      <template v-else-if="module.key === 'H'">
+        <div class="m-form-group enumerator-field" data-field-key="censusEnumeratorName">
+          <div class="m-form-label">H1 普查人员</div>
+          <input
+            v-model.trim="form.censusEnumeratorName"
+            class="m-input"
+            :class="{ 'has-error': errors.censusEnumeratorName }"
+            :disabled="readOnly"
+            maxlength="50"
+            placeholder="请输入普查人员姓名"
+          />
+          <select
+            class="m-select user-select"
+            :value="form.censusEnumeratorName"
+            :disabled="readOnly"
+            @change="event => form.censusEnumeratorName = event.target.value"
+          >
+            <option value="">从系统用户中选择</option>
+            <option v-for="user in systemUserOptions" :key="user.id" :value="user.realName || user.username">
+              {{ user.realName || user.username }}{{ user.roleLabel ? ` · ${user.roleLabel}` : '' }}
+            </option>
+          </select>
+          <div v-if="errors.censusEnumeratorName" class="m-error">{{ errors.censusEnumeratorName }}</div>
+        </div>
+        <FieldControl field-key="censusRemark" :form="form" :errors="errors" :disabled="readOnly" />
+      </template>
     </div>
 
     <div class="m-bottom-bar">
@@ -299,6 +326,7 @@ import db from '@/db'
 import { buildDivisionCode, getStreetOptions, GUIZHOU_PROVINCE_CODE, GUIZHOU_PROVINCE_NAME, splitDivisionCode } from '@/utils/divisionHelper'
 import { buildMobileSubmitContextKey, saveMobileSubmitContext } from '@/utils/mobileSubmitContext'
 import { INITIAL_REVIEW_STATUS, normalizeRecordStatus } from '@/utils/reviewFlow'
+import { getRoleLabel } from '@/utils/constants'
 
 const route = useRoute()
 const router = useRouter()
@@ -316,6 +344,7 @@ const selectedUnit = ref(null)
 const currentRecord = ref(null)
 const showUnitPicker = ref(false)
 const unitSearch = ref('')
+const systemUserOptions = ref([])
 const submitting = ref(false)
 const locating = ref(false)
 const sameAsRegisteredName = ref(false)
@@ -382,6 +411,7 @@ onMounted(async () => {
   handleScrollActiveModule()
   await areaStore.fetchAreas()
   await censusStore.fetchTaskDetail(route.params.taskId)
+  await loadSystemUsers()
   await loadUnits()
   if (editingRecordId.value) await restoreRecord(editingRecordId.value)
   else await applyInitialRouteSelection()
@@ -440,6 +470,14 @@ async function loadUnits() {
     }
   }
   units.value = (await db.accommodations.toArray()).filter(item => !item.deletedAt)
+}
+
+async function loadSystemUsers() {
+  const users = await db.users.toArray()
+  systemUserOptions.value = users
+    .filter(user => user.status !== 'disabled')
+    .map(user => ({ ...user, roleLabel: getRoleLabel(user.role) }))
+    .sort((a, b) => String(a.realName || a.username || '').localeCompare(String(b.realName || b.username || ''), 'zh-CN'))
 }
 
 async function applyInitialRouteSelection() {
@@ -2300,6 +2338,10 @@ const MultiPhotoPicker = defineComponent({
   border-radius: 12px;
   background-color: #fff;
   font-size: 16px;
+}
+
+.enumerator-field .user-select {
+  margin-top: 10px;
 }
 
 :deep(.m-textarea) {

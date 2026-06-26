@@ -10,6 +10,7 @@
         <div><strong>{{ rows.length }}</strong><span>全部记录</span></div>
         <div><strong>{{ pendingCount }}</strong><span>待当前级审核</span></div>
         <div><strong>{{ availableCount }}</strong><span>已可用</span></div>
+        <div><strong>{{ upperRejectedCount }}</strong><span>被驳回</span></div>
       </div>
     </el-card>
 
@@ -156,6 +157,11 @@ const filters = reactive({ keyword: '', areaCodes: ['520000'], status: '' })
 const currentReviewStep = computed(() => getReviewStepForRole(authStore.userRole))
 const pendingCount = computed(() => rows.value.filter(row => canCurrentUserReview(row)).length)
 const availableCount = computed(() => rows.value.filter(row => row.status === 'available').length)
+const upperRejectedCount = computed(() => {
+  const statuses = getUpperRejectedStatuses(authStore.userRole)
+  if (!statuses.length) return 0
+  return rows.value.filter(row => statuses.includes(normalizeRecordStatus(row.status))).length
+})
 const batchApprovableRows = computed(() => selectedRows.value.filter(canCurrentUserApprove))
 const pagedRows = computed(() => {
   const start = (pagination.value.page - 1) * pagination.value.pageSize
@@ -354,6 +360,13 @@ function isRejectedRecord(row) {
   return ['county_rejected', 'city_rejected', 'province_rejected'].includes(normalizeRecordStatus(row?.status))
 }
 
+function getUpperRejectedStatuses(role) {
+  if (role === 'enumerator') return ['county_rejected']
+  if (role === 'county_admin') return ['city_rejected']
+  if (role === 'city_admin') return ['province_rejected']
+  return []
+}
+
 function rejectReason(row) {
   return row?.rejectReason || row?.reviewComment || ''
 }
@@ -422,7 +435,7 @@ function matchesAreaCodes(row, areaCodes = []) {
 
 .hero-stats {
   display: grid;
-  grid-template-columns: repeat(3, 96px);
+  grid-template-columns: repeat(4, 96px);
   gap: 10px;
 }
 

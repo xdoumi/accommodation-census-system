@@ -23,7 +23,7 @@
         <KpiCard icon="OfficeBuilding" :value="data.totalUnits" label="住宿单位总数" color="#409eff" />
       </el-col>
       <el-col :span="6">
-        <KpiCard icon="Search" :value="data.spotCheckUnits" label="分配抽查单位数" color="#67c23a" />
+        <KpiCard icon="Search" :value="data.spotCheckUnits" label="分配抽查单位数" color="#67c23a" secondary-label="实际抽查数" :secondary-value="data.actualSpotCheckUnits" />
       </el-col>
       <el-col :span="6">
         <KpiCard icon="DocumentChecked" :value="data.importedCheckUnits" label="分配核查单位数" color="#e6a23c" secondary-label="实际核查数" :secondary-value="data.actualImportedCheckUnits" />
