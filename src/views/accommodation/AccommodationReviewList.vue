@@ -34,7 +34,29 @@
     </el-card>
 
     <el-card shadow="never">
-      <DataTable :data="pagedRows" :loading="loading" :pagination="pagination" @page-change="handlePageChange">
+      <div class="batch-toolbar">
+        <div>
+          <strong>已选择 {{ selectedRows.length }} 条</strong>
+          <span>仅可批量通过当前级待审记录，驳回需逐条填写原因。</span>
+        </div>
+        <el-button
+          type="success"
+          :disabled="batchApprovableRows.length === 0"
+          @click="batchApproveRecords"
+          v-if="authStore.hasPermission('accommodation:review:batch_approve')"
+        >
+          批量审批通过
+        </el-button>
+      </div>
+      <DataTable
+        :data="pagedRows"
+        :loading="loading"
+        :pagination="pagination"
+        :row-class-name="reviewRowClassName"
+        @page-change="handlePageChange"
+        @selection-change="handleSelectionChange"
+      >
+        <el-table-column type="selection" width="46" align="center" :selectable="canCurrentUserApprove" />
         <el-table-column prop="displayName" label="单位名称" min-width="180" show-overflow-tooltip />
         <el-table-column label="市州" width="120" align="center">
           <template #default="{ row }">{{ areaStore.getAreaName(row.cityCode) || '-' }}</template>
@@ -55,13 +77,14 @@
         <el-table-column label="状态" width="130" align="center">
           <template #default="{ row }"><StatusTag :value="row.status" :options="CENSUS_RECORD_STATUS_OPTIONS" /></template>
         </el-table-column>
-        <el-table-column label="操作" width="260" align="center" fixed="right">
+        <el-table-column label="操作" width="310" align="center" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="openRecord(row)">查看</el-button>
+            <el-button v-if="isRejectedRecord(row)" link type="warning" size="small" @click="showRejectReason(row)">原因</el-button>
             <el-button v-if="canEditReviewRecord(row)" link type="primary" size="small" @click="editRecord(row)">编辑</el-button>
-            <el-button v-if="canCurrentUserReview(row)" link type="success" size="small" @click="reviewRecord(row, 'approve')">{{ currentReviewStep?.approveText || '通过' }}</el-button>
-            <el-button v-if="canCurrentUserReview(row)" link type="danger" size="small" @click="reviewRecord(row, 'reject')">{{ currentReviewStep?.rejectText || '驳回' }}</el-button>
-            <el-button v-if="row.status !== 'available'" link type="danger" size="small" @click="deleteRecord(row)">删除</el-button>
+            <el-button v-if="canCurrentUserApprove(row)" link type="success" size="small" @click="reviewRecord(row, 'approve')">{{ currentReviewStep?.approveText || '通过' }}</el-button>
+            <el-button v-if="canCurrentUserReject(row)" link type="danger" size="small" @click="reviewRecord(row, 'reject')">{{ currentReviewStep?.rejectText || '驳回' }}</el-button>
+            <el-button v-if="canDeleteReviewRecord(row)" link type="danger" size="small" @click="deleteRecord(row)">删除</el-button>
           </template>
         </el-table-column>
       </DataTable>
@@ -69,6 +92,15 @@
 
     <el-drawer v-model="drawerVisible" title="审核记录详情" size="640px">
       <div v-if="activeRow">
+        <el-alert
+          v-if="isRejectedRecord(activeRow)"
+          class="reject-alert"
+          title="该记录已被驳回"
+          type="error"
+          :description="rejectReason(activeRow) || '暂无驳回原因'"
+          show-icon
+          :closable="false"
+        />
         <el-descriptions :column="2" border class="summary-descriptions">
           <el-descriptions-item label="单位名称" :span="2">{{ activeRow.displayName }}</el-descriptions-item>
           <el-descriptions-item label="市州">{{ areaStore.getAreaName(activeRow.cityCode) || '-' }}</el-descriptions-item>
@@ -117,12 +149,14 @@ const router = useRouter()
 const loading = ref(false)
 const rows = ref([])
 const activeRow = ref(null)
+const selectedRows = ref([])
 const drawerVisible = ref(false)
 const pagination = ref({ page: 1, pageSize: 20, total: 0 })
 const filters = reactive({ keyword: '', areaCodes: ['520000'], status: '' })
 const currentReviewStep = computed(() => getReviewStepForRole(authStore.userRole))
 const pendingCount = computed(() => rows.value.filter(row => canCurrentUserReview(row)).length)
 const availableCount = computed(() => rows.value.filter(row => row.status === 'available').length)
+const batchApprovableRows = computed(() => selectedRows.value.filter(canCurrentUserApprove))
 const pagedRows = computed(() => {
   const start = (pagination.value.page - 1) * pagination.value.pageSize
   return rows.value.slice(start, start + pagination.value.pageSize)
@@ -222,13 +256,26 @@ function handlePageChange({ page, pageSize }) {
   pagination.value.pageSize = pageSize
 }
 
+function handleSelectionChange(rows) {
+  selectedRows.value = rows
+}
+
 function openRecord(row) {
   activeRow.value = row
   drawerVisible.value = true
 }
 
 function canEditReviewRecord(row) {
-  return row?.status && row.status !== 'draft' && row.status !== 'available'
+  if (['city_admin', 'provincial_admin'].includes(authStore.userRole)) return false
+  return authStore.hasPermission('accommodation:review:edit')
+    && row?.status
+    && row.status !== 'draft'
+    && row.status !== 'available'
+}
+
+function canDeleteReviewRecord(row) {
+  if (['city_admin', 'provincial_admin'].includes(authStore.userRole)) return false
+  return authStore.hasPermission('accommodation:review:delete') && row?.status !== 'available'
 }
 
 function editRecord(row) {
@@ -239,6 +286,14 @@ function canCurrentUserReview(row) {
   return authStore.hasPermission('census:review')
     && canReviewRecord(row, authStore.userRole)
     && isReviewerInScope(row._assignment, authStore.userRole, authStore.currentUser?.id, authStore.userAreaCode)
+}
+
+function canCurrentUserApprove(row) {
+  return authStore.hasPermission('accommodation:review:approve') && canCurrentUserReview(row)
+}
+
+function canCurrentUserReject(row) {
+  return authStore.hasPermission('accommodation:review:reject') && canCurrentUserReview(row)
 }
 
 async function reviewRecord(row, action) {
@@ -266,6 +321,26 @@ async function reviewRecord(row, action) {
   }
 }
 
+async function batchApproveRecords() {
+  const targets = batchApprovableRows.value
+  if (!targets.length) return
+  try {
+    await ElMessageBox.confirm(`确定批量通过选中的 ${targets.length} 条审核记录吗？`, '批量审批通过', { type: 'warning' })
+    for (const row of targets) {
+      const patch = buildReviewPatch(row, authStore.userRole, 'approve', authStore.currentUser?.id)
+      await db.censusRecords.update(row.id, patch)
+      Object.assign(row, patch)
+      if (patch.status === 'available') await publishRecordToAccommodation(row)
+    }
+    ElMessage.success(`已批量通过 ${targets.length} 条记录`)
+    selectedRows.value = []
+    await loadRows()
+  } catch (error) {
+    if (['cancel', 'close'].includes(error)) return
+    ElMessage.error(error.message || '批量审批失败')
+  }
+}
+
 async function deleteRecord(row) {
   try {
     await ElMessageBox.confirm(`确定删除「${row.displayName}」的审核记录吗？删除后可在删除管理中恢复。`, '删除确认', { type: 'warning' })
@@ -273,6 +348,25 @@ async function deleteRecord(row) {
     ElMessage.success('已删除，记录已进入删除管理')
     await loadRows()
   } catch { /* cancel */ }
+}
+
+function isRejectedRecord(row) {
+  return ['county_rejected', 'city_rejected', 'province_rejected'].includes(normalizeRecordStatus(row?.status))
+}
+
+function rejectReason(row) {
+  return row?.rejectReason || row?.reviewComment || ''
+}
+
+function showRejectReason(row) {
+  ElMessageBox.alert(rejectReason(row) || '暂无驳回原因', '驳回原因', {
+    confirmButtonText: '知道了',
+    type: 'warning',
+  })
+}
+
+function reviewRowClassName({ row }) {
+  return isRejectedRecord(row) ? 'is-review-rejected' : ''
 }
 
 function sourceText(row) {
@@ -356,6 +450,40 @@ function matchesAreaCodes(row, areaCodes = []) {
 
 .filter-panel :deep(.el-card__body) {
   padding-bottom: 0;
+}
+
+.batch-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e5edf8;
+  border-radius: 8px;
+  background: #f8fbff;
+  color: #606266;
+}
+
+.batch-toolbar strong {
+  margin-right: 10px;
+  color: #1f2937;
+}
+
+.batch-toolbar span {
+  font-size: 13px;
+}
+
+.review-page :deep(.el-table__row.is-review-rejected td) {
+  background: #fff5f5 !important;
+}
+
+.review-page :deep(.el-table__row.is-review-rejected td:first-child) {
+  box-shadow: inset 4px 0 0 #f56c6c;
+}
+
+.reject-alert {
+  margin-bottom: 14px;
 }
 
 .summary-descriptions {

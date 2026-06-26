@@ -6,7 +6,9 @@
       stripe
       border
       style="width: 100%"
+      :row-class-name="rowClassName"
       @sort-change="handleSortChange"
+      @selection-change="handleSelectionChange"
     >
       <el-table-column v-if="showIndex" type="index" label="序号" width="60" align="center" />
       <slot />
@@ -34,9 +36,10 @@ const props = defineProps({
   loading: { type: Boolean, default: false },
   pagination: { type: Object, default: () => ({ page: 1, pageSize: 20, total: 0 }) },
   showIndex: { type: Boolean, default: true },
+  rowClassName: { type: [Function, String], default: '' },
 })
 
-const emit = defineEmits(['page-change', 'sort-change'])
+const emit = defineEmits(['page-change', 'sort-change', 'selection-change'])
 
 const currentPage = computed({
   get: () => props.pagination.page,
@@ -58,6 +61,10 @@ function handlePageChange(page) {
 
 function handleSortChange({ prop, order }) {
   emit('sort-change', { field: prop, order: order === 'ascending' ? 'asc' : 'desc' })
+}
+
+function handleSelectionChange(rows) {
+  emit('selection-change', rows)
 }
 </script>
 

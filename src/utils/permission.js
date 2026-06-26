@@ -24,6 +24,11 @@ export const PERMISSION_TREE = [
         children: [
           { value: 'census:review', label: '审核' },
           { value: 'accommodation:review:view', label: '查看' },
+          { value: 'accommodation:review:edit', label: '编辑' },
+          { value: 'accommodation:review:delete', label: '删除' },
+          { value: 'accommodation:review:approve', label: '审批通过' },
+          { value: 'accommodation:review:reject', label: '驳回' },
+          { value: 'accommodation:review:batch_approve', label: '批量审批通过' },
           { value: 'accommodation:review:export', label: '导出' },
         ],
       },
@@ -145,13 +150,14 @@ export const PERMISSION_GROUPS = PERMISSION_TREE.map(group => ({
   permissions: flattenPermissionTree(group.children || []),
 }))
 export const ROLE_PERMISSION_STORAGE_KEY = 'census_role_permissions'
+export const ROLE_PERMISSION_MIGRATION_KEY = 'census_role_permissions_migration_v2'
 
 // 角色权限映射
 export const DEFAULT_ROLE_PERMISSIONS = {
   super_admin: [
     'dashboard:view',
     'accommodation:view', 'accommodation:create', 'accommodation:update', 'accommodation:delete', 'accommodation:import', 'accommodation:export',
-    'accommodation:review:view', 'accommodation:review:export', 'accommodation:restore',
+    'accommodation:review:view', 'accommodation:review:edit', 'accommodation:review:delete', 'accommodation:review:approve', 'accommodation:review:reject', 'accommodation:review:batch_approve', 'accommodation:review:export', 'accommodation:restore',
     'census:view', 'census:create', 'census:update', 'census:delete', 'census:fill', 'census:review',
     'statistics:view', 'statistics:map:view', 'statistics:export',
     'system:user:view', 'system:user:create', 'system:user:update', 'system:user:status', 'system:user:reset_password', 'system:user:delete',
@@ -162,7 +168,7 @@ export const DEFAULT_ROLE_PERMISSIONS = {
   provincial_admin: [
     'dashboard:view',
     'accommodation:view', 'accommodation:create', 'accommodation:update', 'accommodation:delete', 'accommodation:import', 'accommodation:export',
-    'accommodation:review:view', 'accommodation:review:export', 'accommodation:restore',
+    'accommodation:review:view', 'accommodation:review:approve', 'accommodation:review:reject', 'accommodation:review:batch_approve', 'accommodation:review:export', 'accommodation:restore',
     'census:view', 'census:create', 'census:update', 'census:delete', 'census:fill', 'census:review',
     'statistics:view', 'statistics:map:view', 'statistics:export',
     'system:user:view', 'system:user:create', 'system:user:update', 'system:user:status', 'system:user:reset_password',
@@ -172,7 +178,7 @@ export const DEFAULT_ROLE_PERMISSIONS = {
   ],
   city_admin: [
     'dashboard:view',
-    'accommodation:view', 'accommodation:create', 'accommodation:update', 'accommodation:export', 'accommodation:review:view',
+    'accommodation:view', 'accommodation:create', 'accommodation:update', 'accommodation:export', 'accommodation:review:view', 'accommodation:review:approve', 'accommodation:review:reject', 'accommodation:review:batch_approve',
     'census:view', 'census:fill', 'census:review',
     'statistics:view', 'statistics:map:view',
     'system:user:view', 'system:user:create', 'system:user:update',
@@ -180,7 +186,7 @@ export const DEFAULT_ROLE_PERMISSIONS = {
   ],
   county_admin: [
     'dashboard:view',
-    'accommodation:view', 'accommodation:create', 'accommodation:update', 'accommodation:review:view',
+    'accommodation:view', 'accommodation:create', 'accommodation:update', 'accommodation:review:view', 'accommodation:review:edit', 'accommodation:review:delete', 'accommodation:review:approve', 'accommodation:review:reject', 'accommodation:review:batch_approve',
     'census:view', 'census:fill', 'census:review',
     'statistics:view', 'statistics:map:view',
     'system:organization:view',
@@ -231,10 +237,23 @@ export function loadRolePermissionConfig() {
       if (role === 'reviewer') return
       cleaned[role] = Array.isArray(parsed[role]) ? parsed[role].filter(item => valid.has(item)) : []
     })
+    applyRolePermissionMigration(cleaned)
     return cleaned
   } catch {
     return null
   }
+}
+
+function applyRolePermissionMigration(config) {
+  if (localStorage.getItem(ROLE_PERMISSION_MIGRATION_KEY)) return
+  Object.keys(config || {}).forEach(role => {
+    const defaults = DEFAULT_ROLE_PERMISSIONS[role] || []
+    const reviewPermissions = defaults.filter(permission => permission.startsWith('accommodation:review:'))
+    if (!reviewPermissions.length) return
+    config[role] = Array.from(new Set([...(config[role] || []), ...reviewPermissions]))
+  })
+  localStorage.setItem(ROLE_PERMISSION_STORAGE_KEY, JSON.stringify(config))
+  localStorage.setItem(ROLE_PERMISSION_MIGRATION_KEY, '1')
 }
 
 export function saveRolePermissionConfig(config) {
@@ -245,10 +264,12 @@ export function saveRolePermissionConfig(config) {
     cleaned[role] = Array.from(new Set(config[role] || [])).filter(item => valid.has(item))
   })
   localStorage.setItem(ROLE_PERMISSION_STORAGE_KEY, JSON.stringify(cleaned))
+  localStorage.setItem(ROLE_PERMISSION_MIGRATION_KEY, '1')
 }
 
 export function resetRolePermissionConfig() {
   localStorage.removeItem(ROLE_PERMISSION_STORAGE_KEY)
+  localStorage.removeItem(ROLE_PERMISSION_MIGRATION_KEY)
 }
 
 /**

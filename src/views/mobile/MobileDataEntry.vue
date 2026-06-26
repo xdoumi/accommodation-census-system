@@ -5,6 +5,11 @@
       <span>{{ statusBanner.text }}</span>
     </div>
 
+    <div v-if="isRejectedCurrentRecord" class="status-banner rejected">
+      <el-icon><WarningFilled /></el-icon>
+      <span>当前记录已被驳回：{{ currentRejectReason || '暂无驳回原因' }}</span>
+    </div>
+
     <div v-if="readOnly" class="status-banner readonly">
       <el-icon><View /></el-icon>
       <span>当前记录已进入审核流程，仅可查看；草稿或县级驳回记录可继续编辑。</span>
@@ -293,7 +298,7 @@ import { useOfflineQueue } from '@/composables/useOfflineQueue'
 import db from '@/db'
 import { buildDivisionCode, getStreetOptions, GUIZHOU_PROVINCE_CODE, GUIZHOU_PROVINCE_NAME, splitDivisionCode } from '@/utils/divisionHelper'
 import { buildMobileSubmitContextKey, saveMobileSubmitContext } from '@/utils/mobileSubmitContext'
-import { INITIAL_REVIEW_STATUS } from '@/utils/reviewFlow'
+import { INITIAL_REVIEW_STATUS, normalizeRecordStatus } from '@/utils/reviewFlow'
 
 const route = useRoute()
 const router = useRouter()
@@ -308,6 +313,7 @@ const form = reactive(createEmptyCollectionForm())
 const errors = ref({})
 const units = ref([])
 const selectedUnit = ref(null)
+const currentRecord = ref(null)
 const showUnitPicker = ref(false)
 const unitSearch = ref('')
 const submitting = ref(false)
@@ -365,6 +371,8 @@ const statusBanner = computed(() => {
   }
   return null
 })
+const isRejectedCurrentRecord = computed(() => ['county_rejected', 'city_rejected', 'province_rejected'].includes(normalizeRecordStatus(currentRecord.value?.status)))
+const currentRejectReason = computed(() => currentRecord.value?.rejectReason || currentRecord.value?.reviewComment || '')
 
 onMounted(async () => {
   offlineQueue.start()
@@ -516,6 +524,7 @@ function isFilledValue(value) {
 async function restoreRecord(recordId) {
   const record = await db.censusRecords.get(Number(recordId))
   if (!record) return
+  currentRecord.value = record
   readOnly.value = route.query.mode === 'view' || !canEditRecord(record)
   if (record.formData) {
     try { Object.assign(form, createEmptyCollectionForm(), JSON.parse(record.formData)) } catch { /* ignore */ }
@@ -526,7 +535,7 @@ async function restoreRecord(recordId) {
 }
 
 function canEditRecord(record) {
-  return ['draft', 'county_rejected'].includes(record?.status)
+  return ['draft', 'county_rejected'].includes(normalizeRecordStatus(record?.status))
 }
 
 function saveLocalDraft() {
@@ -2260,6 +2269,14 @@ const MultiPhotoPicker = defineComponent({
   &.readonly {
     background: #ecf5ff;
     color: #1a5fc5;
+  }
+
+  &.rejected {
+    align-items: flex-start;
+    background: #fef0f0;
+    color: #b42318;
+    line-height: 1.45;
+    font-weight: 600;
   }
 }
 

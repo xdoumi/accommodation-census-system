@@ -22,13 +22,20 @@
         <p style="margin-top: 12px;">暂无填写的单位</p>
       </div>
 
-      <div v-for="record in filteredRecords" :key="record.id" class="m-card record-card">
+      <div v-for="record in filteredRecords" :key="record.id" class="m-card record-card" :class="{ rejected: isRejectedRecord(record) }">
         <div class="record-head">
           <div style="min-width: 0; flex: 1;">
             <div class="record-title">{{ record.unitName || '未命名单位' }}</div>
             <div class="record-meta">{{ record.actualAddress || record.registeredAddress || record.locationAddress || '暂无地址' }}</div>
           </div>
           <StatusTag :value="record.status" :options="CENSUS_RECORD_STATUS_OPTIONS" />
+        </div>
+        <div v-if="isRejectedRecord(record)" class="reject-notice">
+          <div>
+            <strong>记录已驳回</strong>
+            <span>{{ rejectReason(record) || '暂无驳回原因' }}</span>
+          </div>
+          <button type="button" @click="showRejectReason(record)">查看原因</button>
         </div>
         <div class="record-lines">
           <div><span>信用代码</span>{{ record.creditCode || '-' }}</div>
@@ -38,6 +45,7 @@
         </div>
         <div class="record-actions">
           <el-button link type="primary" size="small" @click="viewRecord(record)">查看</el-button>
+          <el-button v-if="isRejectedRecord(record)" link type="warning" size="small" @click="showRejectReason(record)">驳回原因</el-button>
           <el-button v-if="canEditRecord(record)" link type="primary" size="small" @click="editRecord(record)">编辑</el-button>
           <el-button v-if="record.status === 'draft'" link type="success" size="small" @click="submitRecord(record)">提交</el-button>
           <el-button v-if="canEditRecord(record)" link type="danger" size="small" @click="deleteRecord(record)">删除</el-button>
@@ -135,6 +143,21 @@ function canEditRecord(record) {
   return ['draft', 'county_rejected'].includes(record.status)
 }
 
+function isRejectedRecord(record) {
+  return ['county_rejected', 'city_rejected', 'province_rejected'].includes(normalizeRecordStatus(record?.status))
+}
+
+function rejectReason(record) {
+  return record?.rejectReason || record?.reviewComment || ''
+}
+
+function showRejectReason(record) {
+  ElMessageBox.alert(rejectReason(record) || '暂无驳回原因', '驳回原因', {
+    confirmButtonText: '知道了',
+    type: 'warning',
+  })
+}
+
 function viewRecord(record) {
   router.push(`/m/entry/${record.taskId}/${record.assignmentId}?recordId=${record.id}&mode=view`)
 }
@@ -187,6 +210,12 @@ async function deleteRecord(record) {
 .record-card {
   margin: 8px 0;
   padding: 14px;
+
+  &.rejected {
+    border-color: #f8b4b4;
+    background: #fff8f8;
+    box-shadow: inset 4px 0 0 #f56c6c;
+  }
 }
 
 .record-head {
@@ -224,6 +253,41 @@ async function deleteRecord(record) {
     display: block;
     margin-bottom: 2px;
     color: #909399;
+  }
+}
+
+.reject-notice {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: #fef0f0;
+  color: #b42318;
+  font-size: 12px;
+
+  strong,
+  span {
+    display: block;
+  }
+
+  span {
+    margin-top: 2px;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #7a271a;
+  }
+
+  button {
+    flex: 0 0 auto;
+    border: 0;
+    background: transparent;
+    color: #c45656;
+    font-weight: 600;
   }
 }
 

@@ -24,6 +24,7 @@ const router = useRouter()
 const tabs = computed(() => [
   { path: '/m/home', label: '首页', icon: 'HomeFilled' },
   { path: '/m/entry/0/0?mode=new', match: '/m/entry/0/0', label: '新增填报', icon: 'Plus' },
+  { path: '/m/units', label: '填写清单', icon: 'DocumentChecked' },
   { path: '/m/profile', label: '我的', icon: 'UserFilled' },
 ])
 
