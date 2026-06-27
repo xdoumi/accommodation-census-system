@@ -96,6 +96,8 @@ export const COLLECTION_MODULES = [
 
 export const COLLECTION_STEP_LABELS = COLLECTION_MODULES.map(m => m.shortTitle)
 
+export const CONTACT_PHONE_PATTERN = /^(\+?86[-\s]?)?(1\d{10}|0\d{2,3}[-\s]?\d{7,8}([-\s转]\d{1,6})?|\d{7,8}([-\s转]\d{1,6})?|400[-\s]?\d{3}[-\s]?\d{4})$/
+
 export const COLLECTION_FIELD_MAP = {
   location: { code: 'A1', label: '定位坐标', required: true, type: 'location' },
   unitName: { code: 'A2', label: '单位名称', required: true, type: 'text', maxLength: 100 },
@@ -170,7 +172,7 @@ export const COLLECTION_FIELD_MAP = {
   registeredDivisionAddress: { code: 'B8', label: '区划地址', required: true, type: 'divisionAddress' },
   registeredDivisionCode: { code: 'B9', label: '区划代码（12位）', required: true, type: 'text', pattern: /^\d{12}$/ },
   legalRepresentative: { code: 'B10', label: '法定代表人姓名', required: false, type: 'text', maxLength: 50 },
-  legalRepresentativePhone: { code: 'B11', label: '法定代表人手机号', required: true, type: 'tel', pattern: /^1\d{10}$/ },
+  legalRepresentativePhone: { code: 'B11', label: '法定代表人联系电话', required: true, type: 'tel', pattern: CONTACT_PHONE_PATTERN },
   operatingName: { code: 'C1', label: '经营单位名称', required: true, type: 'text', maxLength: 100 },
   actualOperatingStatus: {
     code: 'C2',
@@ -190,7 +192,7 @@ export const COLLECTION_FIELD_MAP = {
   actualDivisionAddress: { code: 'C4', label: '实际经营区划地址', required: true, type: 'divisionAddress' },
   divisionCode: { code: 'C5', label: '实际经营区划代码（12位）', required: true, type: 'text', pattern: /^\d{12}$/ },
   contactName: { code: 'C6', label: '联系人姓名', required: false, type: 'text' },
-  contactPhone: { code: 'C7', label: '联系人手机号', required: false, type: 'tel', pattern: /^1\d{10}$/ },
+  contactPhone: { code: 'C7', label: '联系电话', required: false, type: 'tel', pattern: CONTACT_PHONE_PATTERN },
   economyIndustryCode: { code: 'C8', label: '行业代码', required: true, type: 'industry' },
   isStarIndustryCode: {
     code: 'C9',

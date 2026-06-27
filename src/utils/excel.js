@@ -99,8 +99,8 @@ const FIELD_EXTRA_INSTRUCTIONS = {
   registeredDivisionAddress: '按省、市州、区县、街道填写，例如：贵州省 / 贵阳市 / 云岩区 / 北京路街道。',
   actualDivisionAddress: '按省、市州、区县、街道填写，例如：贵州省 / 贵阳市 / 云岩区 / 北京路街道。',
   divisionCode: '填写12位实际经营区划代码。',
-  legalRepresentativePhone: '填写11位手机号码。',
-  contactPhone: '填写11位手机号码。',
+  legalRepresentativePhone: '填写手机号码或固定电话号码，例如：13800138000、0851-12345678。',
+  contactPhone: '填写手机号码或固定电话号码，例如：13800138000、0851-12345678。',
 }
 
 function templateModules() {
