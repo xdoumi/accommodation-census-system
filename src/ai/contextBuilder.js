@@ -17,7 +17,7 @@ export async function buildChatContext() {
   if (['county_admin', 'enumerator'].includes(user?.role)) myUnits = myUnits.filter(u => u.countyCode === user.areaCode)
 
   const myTasks = await db.censusTasks.toArray()
-  const openTasks = myTasks.filter(t => ['published', 'in_progress'].includes(t.status))
+  const openTasks = myTasks.filter(t => t.status === 'in_progress')
 
   return {
     user: {

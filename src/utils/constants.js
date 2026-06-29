@@ -114,7 +114,6 @@ export const USER_STATUS_MAP = Object.fromEntries(USER_STATUS_OPTIONS.map(s => [
 // 普查任务状态
 export const CENSUS_TASK_STATUS_OPTIONS = [
   { value: 'draft', label: '草稿', type: 'info' },
-  { value: 'published', label: '已发布', type: '' },
   { value: 'in_progress', label: '进行中', type: 'warning' },
   { value: 'completed', label: '已完成', type: 'success' },
 ]

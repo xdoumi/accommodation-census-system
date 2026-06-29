@@ -17,6 +17,7 @@ export const useCensusStore = defineStore('census', () => {
   async function fetchTasks(filters = {}) {
     taskLoading.value = true
     try {
+      await normalizeLegacyTaskStatuses()
       let allTasks = await db.censusTasks.toArray()
       for (const task of allTasks.filter(item => (item.taskType || 'main') === 'sub')) {
         await syncAssignmentsForSubTask(task.id)
@@ -56,6 +57,7 @@ export const useCensusStore = defineStore('census', () => {
   async function fetchTaskDetail(id) {
     taskLoading.value = true
     try {
+      await normalizeLegacyTaskStatuses()
       currentTask.value = await db.censusTasks.get(Number(id))
       if (currentTask.value) {
         if ((currentTask.value.taskType || 'main') === 'main') {
@@ -99,18 +101,7 @@ export const useCensusStore = defineStore('census', () => {
 
   async function updateTask(id, data) {
     const now = new Date().toISOString()
-    await db.censusTasks.update(Number(id), { ...data, updatedAt: now })
-  }
-
-  async function publishTask(id) {
-    const task = await db.censusTasks.get(Number(id))
-    if (!task) return
-
-    const now = new Date().toISOString()
-    await db.censusTasks.update(Number(id), { status: 'published', updatedAt: now })
-    if ((task.taskType || 'main') === 'sub') {
-      await syncAssignmentsForSubTask(Number(id))
-    }
+    await db.censusTasks.update(Number(id), normalizeTaskStatusPatch({ ...data, updatedAt: now }))
   }
 
   async function fetchSubTasks(parentTaskId) {
@@ -126,7 +117,7 @@ export const useCensusStore = defineStore('census', () => {
       ...data,
       parentTaskId: Number(parentTaskId),
       taskType: 'sub',
-      status: data.status || 'published',
+      status: normalizeTaskStatus(data.status || 'draft'),
       createdBy: auth.currentUser?.id,
       createdAt: now,
       updatedAt: now,
@@ -139,10 +130,10 @@ export const useCensusStore = defineStore('census', () => {
     const taskId = Number(id)
     const task = await db.censusTasks.get(taskId)
     if (!task) return
-    await db.censusTasks.update(taskId, {
+    await db.censusTasks.update(taskId, normalizeTaskStatusPatch({
       ...data,
       updatedAt: new Date().toISOString(),
-    })
+    }))
     await syncAssignmentsForSubTask(taskId)
   }
 
@@ -600,11 +591,28 @@ export const useCensusStore = defineStore('census', () => {
   return {
     tasks, currentTask, subTasks, assignments, records, taskLoading, assignmentLoading,
     fetchTasks, fetchTaskDetail, fetchAssignmentsByTaskIds, fetchMyAssignments,
-    fetchSubTasks, createTask, createSubTask, updateTask, updateSubTask, publishTask, startTask, completeTask, removeTask, removeSubTask,
+    fetchSubTasks, createTask, createSubTask, updateTask, updateSubTask, startTask, completeTask, removeTask, removeSubTask,
     updateAssignment, submitAssignment, reviewAssignment,
     fetchRecords, saveRecord, submitRecord, calculateProgress,
   }
 })
+
+function normalizeTaskStatus(status) {
+  return status === 'published' ? 'draft' : status
+}
+
+function normalizeTaskStatusPatch(patch = {}) {
+  if (!Object.prototype.hasOwnProperty.call(patch, 'status')) return patch
+  return { ...patch, status: normalizeTaskStatus(patch.status) }
+}
+
+async function normalizeLegacyTaskStatuses() {
+  const legacyTasks = await db.censusTasks.where('status').equals('published').toArray()
+  await Promise.all(legacyTasks.map(task => db.censusTasks.update(task.id, {
+    status: 'draft',
+    updatedAt: task.updatedAt || new Date().toISOString(),
+  })))
+}
 
 function isUserResponsible(task, userId) {
   if (!userId) return false

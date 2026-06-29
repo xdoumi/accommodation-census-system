@@ -148,7 +148,7 @@
         </el-card>
 
         <div style="margin-top: 20px; text-align: right;">
-          <el-button v-if="['published', 'in_progress'].includes(store.currentTask.status) && authStore.hasPermission('census:fill')"
+          <el-button v-if="store.currentTask.status === 'in_progress' && authStore.hasPermission('census:fill')"
             type="primary" @click="router.push(`/census/${store.currentTask.id}/entry`)">数据填报</el-button>
         </div>
       </template>

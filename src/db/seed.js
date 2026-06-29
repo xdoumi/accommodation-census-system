@@ -368,7 +368,7 @@ function generateCensusTasks() {
       title: '遵义市住宿业普查子任务',
       description: '遵义市重点旅游住宿单位现场采集。',
       deadline: formatDate(addDays(now, 42)),
-      status: 'published',
+      status: 'draft',
       assignedAreaCodes: JSON.stringify(['520302', '520382']),
       responsibleUserIds: JSON.stringify([13]),
       responsibleUserNames: '普查员丙',
