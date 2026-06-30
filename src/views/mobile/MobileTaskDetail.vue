@@ -168,21 +168,37 @@ async function loadTaskUnits() {
   const taskRecords = await db.censusRecords.where('taskId').equals(Number(route.params.id)).toArray()
   const existingRecordIds = new Set(allRecords.map(record => Number(record.id)))
   taskRecords.forEach(record => {
-    if (record?.id && !existingRecordIds.has(Number(record.id))) allRecords.push(record)
+    if (record?.id && !existingRecordIds.has(Number(record.id))) {
+      allRecords.push(record)
+      existingRecordIds.add(Number(record.id))
+    }
   })
+  if (authStore.currentUser?.id) {
+    const ownRecords = await db.censusRecords.where('filledBy').equals(Number(authStore.currentUser.id)).toArray()
+    ownRecords.forEach(record => {
+      if (record?.id && !existingRecordIds.has(Number(record.id))) {
+        allRecords.push(record)
+        existingRecordIds.add(Number(record.id))
+      }
+    })
+  }
   allRecords.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt))
 
   const nextRecordMap = new Map()
   allRecords.forEach(record => {
-    const key = buildRecordKey(record)
-    if (key && !nextRecordMap.has(key)) nextRecordMap.set(key, record)
+    buildRecordKeys(record).forEach(key => {
+      if (key && !nextRecordMap.has(key)) nextRecordMap.set(key, record)
+    })
   })
   const rows = []
   for (const id of ids) {
     const unit = await db.accommodations.get(id)
     if (!unit || unit.deletedAt) continue
     const assignmentId = assignmentByAccommodation.get(id) || null
-    const record = nextRecordMap.get(`unit:${id}`) || nextRecordMap.get(`credit:${unit.creditCode}`) || null
+    const record = nextRecordMap.get(`unit:${id}`)
+      || nextRecordMap.get(`credit:${normalizeMatchText(unit.creditCode)}`)
+      || nextRecordMap.get(`name:${normalizeMatchText(unit.name)}`)
+      || null
     rows.push({
       ...unit,
       assignmentId,
@@ -198,10 +214,30 @@ function parseArray(raw) {
   try { return Array.isArray(raw) ? raw : JSON.parse(raw || '[]') } catch { return [] }
 }
 
-function buildRecordKey(record) {
-  if (record.accommodationId) return `unit:${record.accommodationId}`
-  if (record.creditCode) return `credit:${record.creditCode}`
-  return ''
+function buildRecordKeys(record) {
+  const keys = []
+  const formData = parseRecordFormData(record)
+  if (record.accommodationId) keys.push(`unit:${record.accommodationId}`)
+  const creditCode = normalizeMatchText(record.creditCode || formData.creditCode)
+  if (creditCode) keys.push(`credit:${creditCode}`)
+  ;[
+    record.unitName,
+    formData.operatingName,
+    formData.registeredName,
+    formData.unitName,
+  ].forEach(name => {
+    const normalizedName = normalizeMatchText(name)
+    if (normalizedName) keys.push(`name:${normalizedName}`)
+  })
+  return [...new Set(keys)]
+}
+
+function parseRecordFormData(record) {
+  try { return JSON.parse(record?.formData || '{}') } catch { return {} }
+}
+
+function normalizeMatchText(value) {
+  return String(value || '').trim().toLowerCase()
 }
 
 function getRecordStatusLabel(status) {
