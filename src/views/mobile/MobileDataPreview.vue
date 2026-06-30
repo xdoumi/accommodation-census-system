@@ -1,19 +1,19 @@
 <template>
   <div class="preview-page">
     <div class="m-card preview-hero">
-      <div class="hero-kicker">提交预览</div>
+      <div class="hero-kicker">{{ isViewMode ? '填报查看' : '提交预览' }}</div>
       <div class="unit-title">{{ form.operatingName || form.registeredName || form.unitName || '新增采集对象' }}</div>
-      <div class="unit-subtitle">请核对整张采集表，确认无误后进入签字确认。</div>
+      <div class="unit-subtitle">{{ isViewMode ? '以下为该单位已保存的完整填报内容。' : '请核对整张采集表，确认无误后进入签字确认。' }}</div>
     </div>
 
     <div class="m-card preview-card">
       <CollectionSubmitPreview v-if="context" :form="form" />
-      <el-empty v-else description="未找到待预览的填报数据" />
+      <el-empty v-else :description="loading ? '正在加载填报数据' : '未找到待预览的填报数据'" />
     </div>
 
     <div class="m-bottom-bar">
-      <el-button @click="backToEdit">返回编辑</el-button>
-      <el-button type="primary" :disabled="!context" @click="goSign">签字确认</el-button>
+      <el-button @click="backToEdit">{{ isViewMode ? '返回清单' : '返回编辑' }}</el-button>
+      <el-button v-if="!isViewMode" type="primary" :disabled="!context" @click="goSign">签字确认</el-button>
     </div>
   </div>
 </template>
@@ -24,17 +24,28 @@ import { useRoute, useRouter } from 'vue-router'
 import CollectionSubmitPreview from '@/components/mobile/CollectionSubmitPreview.vue'
 import { createEmptyCollectionForm } from '@/utils/collectionSpec'
 import { loadMobileSubmitContext } from '@/utils/mobileSubmitContext'
+import db from '@/db'
 
 const route = useRoute()
 const router = useRouter()
 const context = ref(null)
+const loading = ref(false)
+const isViewMode = computed(() => route.query.mode === 'view' && route.query.recordId)
 const form = computed(() => context.value?.form || createEmptyCollectionForm())
 
-onMounted(() => {
+onMounted(async () => {
+  if (isViewMode.value) {
+    await loadRecordPreview()
+    return
+  }
   context.value = loadMobileSubmitContext(route.query.ctx)
 })
 
 function backToEdit() {
+  if (isViewMode.value) {
+    router.push('/m/units')
+    return
+  }
   const taskId = route.params.taskId
   const assignmentId = route.params.assignmentId || 0
   const query = {}
@@ -47,6 +58,30 @@ function goSign() {
     path: `/m/entry/${route.params.taskId}/${route.params.assignmentId || 0}/sign`,
     query: { ctx: route.query.ctx },
   })
+}
+
+async function loadRecordPreview() {
+  loading.value = true
+  try {
+    const record = await db.censusRecords.get(Number(route.query.recordId))
+    if (!record) return
+    let recordForm = createEmptyCollectionForm()
+    try {
+      recordForm = { ...recordForm, ...JSON.parse(record.formData || '{}') }
+    } catch { /* ignore invalid form data */ }
+    context.value = {
+      form: {
+        ...recordForm,
+        unitName: recordForm.unitName || record.unitName || '',
+        creditCode: recordForm.creditCode || record.creditCode || '',
+        checkType: recordForm.checkType || record.checkType || '',
+        catalogSource: recordForm.catalogSource || record.catalogSource || '',
+        licenseType: recordForm.licenseType || record.licenseType || '',
+      },
+    }
+  } finally {
+    loading.value = false
+  }
 }
 </script>
 

@@ -47,7 +47,6 @@
           <el-button link type="primary" size="small" @click="viewRecord(record)">查看</el-button>
           <el-button v-if="isRejectedRecord(record)" link type="warning" size="small" @click="showRejectReason(record)">驳回原因</el-button>
           <el-button v-if="canEditRecord(record)" link type="primary" size="small" @click="editRecord(record)">编辑</el-button>
-          <el-button v-if="record.status === 'draft'" link type="success" size="small" @click="submitRecord(record)">提交</el-button>
           <el-button v-if="canEditRecord(record)" link type="danger" size="small" @click="deleteRecord(record)">删除</el-button>
         </div>
       </div>
@@ -65,7 +64,7 @@ import db from '@/db'
 import { CENSUS_RECORD_STATUS_OPTIONS } from '@/utils/constants'
 import { formatDateTime } from '@/utils/formatters'
 import { getOptionLabel } from '@/utils/collectionSpec'
-import { normalizeRecordStatus, submitForCountyReviewPatch } from '@/utils/reviewFlow'
+import { normalizeRecordStatus } from '@/utils/reviewFlow'
 import { archiveCensusRecord } from '@/utils/accommodationWorkflow'
 import StatusTag from '@/components/common/StatusTag.vue'
 
@@ -167,17 +166,11 @@ function showRejectReason(record) {
 }
 
 function viewRecord(record) {
-  router.push(`/m/entry/${record.taskId || 0}/${record.assignmentId || 0}?recordId=${record.id}&mode=view`)
+  router.push(`/m/entry/${record.taskId || 0}/${record.assignmentId || 0}/preview?recordId=${record.id}&mode=view`)
 }
 
 function editRecord(record) {
   router.push(`/m/entry/${record.taskId || 0}/${record.assignmentId || 0}?recordId=${record.id}`)
-}
-
-async function submitRecord(record) {
-  await db.censusRecords.update(record.id, submitForCountyReviewPatch())
-  ElMessage.success('已提交审核')
-  await loadRecords()
 }
 
 async function deleteRecord(record) {
