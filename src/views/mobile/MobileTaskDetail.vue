@@ -165,6 +165,11 @@ async function loadTaskUnits() {
   for (const assignment of censusStore.assignments) {
     allRecords.push(...await db.censusRecords.where('assignmentId').equals(Number(assignment.id)).toArray())
   }
+  const taskRecords = await db.censusRecords.where('taskId').equals(Number(route.params.id)).toArray()
+  const existingRecordIds = new Set(allRecords.map(record => Number(record.id)))
+  taskRecords.forEach(record => {
+    if (record?.id && !existingRecordIds.has(Number(record.id))) allRecords.push(record)
+  })
   allRecords.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt))
 
   const nextRecordMap = new Map()

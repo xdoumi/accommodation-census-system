@@ -1,4 +1,4 @@
-const SEED_VERSION = 'guizhou-main-subtask-v3'
+const SEED_VERSION = 'guizhou-main-subtask-v4'
 
 // ==================== 贵州省区域数据 ====================
 const AREA_DATA = [
@@ -442,6 +442,129 @@ function generateAssignments(tasks, accommodations = []) {
   return assignments
 }
 
+function buildDemoCollectionForm(unit, overrides = {}) {
+  const countyName = areaName(unit.countyCode)
+  const cityName = areaName(unit.cityCode)
+  const divisionAddress = `贵州省 / ${cityName} / ${countyName} / ${countyName}街道`
+  const industryCode = unit.category === 'star_hotel' ? '6110' : unit.category === 'minshuku' ? '6130' : unit.category === 'other' ? '6190' : '6129'
+  const now = overrides.submittedAt || new Date().toISOString()
+  return {
+    location: unit.longitude && unit.latitude ? { longitude: unit.longitude, latitude: unit.latitude } : null,
+    locationAddress: unit.detailAddress || '',
+    locationCapturedAt: now,
+    unitName: unit.name || '',
+    checkType: unit.checkType || '',
+    catalogSource: unit.catalogSource || '',
+    licenseType: unit.licenseStatus === 'pending' ? 'other' : 'has_license',
+    businessLicensePhoto: '',
+    businessLicensePhotoName: '',
+    registeredName: unit.registeredName || unit.name || '',
+    creditCode: unit.creditCode || '',
+    registrationAuthority: 'market',
+    registrationAuthorityOther: '',
+    registrationDate: unit.openDate || '',
+    registeredStatus: 'operating',
+    registeredAddress: unit.registeredAddress || unit.detailAddress || '',
+    registeredDivisionAddress: divisionAddress,
+    registeredDivisionCode: `${unit.countyCode}001000`,
+    registeredDivisionProvinceCode: '520000',
+    registeredDivisionCityCode: unit.cityCode,
+    registeredDivisionCountyCode: unit.countyCode,
+    registeredDivisionStreetCode: '001',
+    registeredDivisionStreetName: `${countyName}街道`,
+    legalRepresentative: overrides.legalRepresentative || '张明',
+    legalRepresentativePhone: overrides.legalRepresentativePhone || '0851-86668888',
+    operatingName: unit.operatingName || unit.name || '',
+    actualOperatingStatus: 'operating',
+    actualAddress: unit.actualAddress || unit.detailAddress || '',
+    actualDivisionAddress: divisionAddress,
+    divisionCode: `${unit.countyCode}001000`,
+    divisionProvinceCode: '520000',
+    divisionCityCode: unit.cityCode,
+    divisionCountyCode: unit.countyCode,
+    divisionStreetCode: '001',
+    divisionStreetName: `${countyName}街道`,
+    contactName: overrides.contactName || '李华',
+    contactPhone: overrides.contactPhone || '13885001234',
+    economyIndustryCode: industryCode,
+    isStarIndustryCode: ['6130', '6140', '6190', '8511'].includes(industryCode) ? 'yes' : 'no',
+    stateHolding: 'other',
+    policeSystemStatus: 'already_connected',
+    policeSystemReason: '',
+    inOriginalCultureTourismList: unit.category === 'star_hotel' ? 'yes' : 'no',
+    buildingOwnership: 'owned',
+    businessMode: 'stable',
+    businessModeRemark: '',
+    ratingLevel: unit.starRating ? ['two_or_below', 'two_or_below', 'three_star', 'four_star', 'five_star'][Math.max(0, Math.min(4, Number(unit.starRating) - 1))] : 'unrated',
+    rooms: unit.rooms || 0,
+    beds: unit.beds || 0,
+    staffCount: unit.staffCount || 0,
+    subjectType: Number(unit.rooms || 0) >= 50 ? 'above_scale_enterprise' : 'below_scale_enterprise',
+    otaPlatforms: ['ctrip', 'meituan'],
+    otaOther: '',
+    storefrontPhotos: [],
+    groupPhotos: [],
+    censusEnumeratorName: overrides.enumeratorName || '普查员甲',
+    censusRemark: overrides.remark || '演示填报记录',
+    managerSignature: overrides.signature || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="320" height="120"><text x="40" y="72" font-size="36" fill="%231a5fc5">已签字</text></svg>',
+    managerSignatureAt: now,
+    sourceCatalogMatched: true,
+    sourceCatalogName: '2026年贵州省住宿业普查子任务',
+    submittedAt: now,
+  }
+}
+
+function generateDemoCensusRecords(assignments = [], accommodations = []) {
+  const now = new Date()
+  const toIso = offsetHours => new Date(now.getTime() + offsetHours * 3600 * 1000).toISOString()
+  const targetAssignments = assignments
+    .filter(item => Number(item.taskId) === 2)
+    .sort((a, b) => String(a.areaCode).localeCompare(String(b.areaCode)))
+  const rows = []
+  let id = 1
+
+  targetAssignments.slice(0, 2).forEach((assignment, index) => {
+    const targetIds = JSON.parse(assignment.targetAccommodationIds || '[]')
+    const unit = accommodations.find(item => Number(item.id) === Number(targetIds[index] || targetIds[0]))
+    if (!unit) return
+    const submittedAt = toIso(-24 + index)
+    const form = buildDemoCollectionForm(unit, {
+      submittedAt,
+      legalRepresentative: index === 0 ? '王贵生' : '赵黔',
+      legalRepresentativePhone: index === 0 ? '0851-85556666' : '13885006666',
+      contactName: index === 0 ? '陈经理' : '周店长',
+      contactPhone: index === 0 ? '0851-85557777' : '0851-83669999',
+      enumeratorName: index === 0 ? '普查员甲' : '普查员乙',
+      remark: index === 0 ? '移动端演示：已提交县级审核' : '移动端演示：草稿待补充现场照片',
+    })
+    rows.push({
+      id: id++,
+      taskId: assignment.taskId,
+      assignmentId: assignment.id,
+      accommodationId: unit.id,
+      status: index === 0 ? 'pending_county_review' : 'draft',
+      formData: JSON.stringify(form),
+      submittedAt: index === 0 ? submittedAt : null,
+      source: 'mobile',
+      unitName: unit.name,
+      creditCode: unit.creditCode,
+      checkType: unit.checkType,
+      catalogSource: unit.catalogSource,
+      licenseType: form.licenseType,
+      sourceCatalogName: form.sourceCatalogName,
+      location: form.location ? JSON.stringify(form.location) : '',
+      managerSignature: form.managerSignature,
+      managerSignatureAt: form.managerSignatureAt,
+      reviewLevel: index === 0 ? 'county' : undefined,
+      reviewAction: index === 0 ? 'submit' : undefined,
+      filledBy: index === 0 ? 11 : 12,
+      createdAt: submittedAt,
+      updatedAt: submittedAt,
+    })
+  })
+  return rows
+}
+
 function areaMatchesUnit(areaCode, item) {
   if (!areaCode || !item) return false
   if (areaCode === '520000') return true
@@ -548,6 +671,31 @@ async function backfillOrganizations(db) {
   return true
 }
 
+async function backfillMobileDemoRecords(db) {
+  const existing = await db.censusRecords.toArray()
+  if (existing.some(record => record.source === 'mobile' && record.sourceCatalogName === '2026年贵州省住宿业普查子任务')) return false
+
+  const assignments = await db.censusAssignments.toArray()
+  const accommodations = await db.accommodations.toArray()
+  const demoRecords = generateDemoCensusRecords(assignments, accommodations)
+  if (!demoRecords.length) return false
+
+  await db.transaction('rw', db.censusRecords, db.censusAssignments, async () => {
+    await db.censusRecords.bulkAdd(demoRecords.map(({ id, ...record }) => record))
+    for (const assignmentId of [...new Set(demoRecords.map(record => record.assignmentId).filter(Boolean))]) {
+      const records = demoRecords.filter(record => Number(record.assignmentId) === Number(assignmentId))
+      const hasSubmitted = records.some(record => record.status !== 'draft')
+      await db.censusAssignments.update(Number(assignmentId), {
+        status: hasSubmitted ? 'submitted' : 'in_progress',
+        progress: hasSubmitted ? 100 : 50,
+        submittedAt: hasSubmitted ? records.find(record => record.status !== 'draft')?.submittedAt : null,
+        updatedAt: new Date().toISOString(),
+      })
+    }
+  })
+  return true
+}
+
 export async function clearBusinessData(db) {
   const stores = [
     db.accommodations,
@@ -579,6 +727,7 @@ export async function seedDatabase(db) {
     await backfillAccommodationCatalogFields(db)
     await backfillAssignmentUnitStats(db)
     await backfillOrganizations(db)
+    await backfillMobileDemoRecords(db)
     if (currentVersion !== SEED_VERSION) {
       localStorage.setItem('accommodation_seed_version', SEED_VERSION)
     }
@@ -592,6 +741,7 @@ export async function seedDatabase(db) {
   const accommodations = generateAccommodations()
   const tasks = generateCensusTasks()
   const assignments = generateAssignments(tasks, accommodations)
+  const records = generateDemoCensusRecords(assignments, accommodations)
   const organizations = generateOrganizations(users)
 
   await db.transaction('rw', db.areas, db.users, db.accommodations, db.censusTasks, db.censusAssignments, db.censusRecords, db.organizations, async () => {
@@ -600,9 +750,10 @@ export async function seedDatabase(db) {
     await db.accommodations.bulkAdd(accommodations)
     await db.censusTasks.bulkAdd(tasks)
     await db.censusAssignments.bulkAdd(assignments)
+    await db.censusRecords.bulkAdd(records)
     await db.organizations.bulkAdd(organizations)
   })
 
   localStorage.setItem('accommodation_seed_version', SEED_VERSION)
-  console.log(`[Seed] 贵州数据初始化完成：${AREA_DATA.length}个区域, ${users.length}个用户, ${organizations.length}个组织, ${accommodations.length}个住宿单位, ${tasks.length}个任务, ${assignments.length}个子任务分配`)
+  console.log(`[Seed] 贵州数据初始化完成：${AREA_DATA.length}个区域, ${users.length}个用户, ${organizations.length}个组织, ${accommodations.length}个住宿单位, ${tasks.length}个任务, ${assignments.length}个子任务分配, ${records.length}条移动端演示填报`)
 }
