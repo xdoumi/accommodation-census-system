@@ -171,7 +171,7 @@ export const COLLECTION_FIELD_MAP = {
   registeredAddress: { code: 'B7', label: '注册地址', required: true, type: 'textarea', maxLength: 200 },
   registeredDivisionAddress: { code: 'B8', label: '区划地址', required: true, type: 'divisionAddress' },
   registeredDivisionCode: { code: 'B9', label: '区划代码（12位）', required: true, type: 'text', pattern: /^\d{12}$/ },
-  legalRepresentative: { code: 'B10', label: '法定代表人姓名', required: false, type: 'text', maxLength: 50 },
+  legalRepresentative: { code: 'B10', label: '法定代表人姓名', required: true, type: 'text', maxLength: 50 },
   legalRepresentativePhone: { code: 'B11', label: '法定代表人联系电话', required: true, type: 'tel', pattern: CONTACT_PHONE_PATTERN },
   operatingName: { code: 'C1', label: '经营单位名称', required: true, type: 'text', maxLength: 100 },
   actualOperatingStatus: {

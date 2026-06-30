@@ -60,6 +60,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useCensusStore } from '@/stores/census'
+import { useAuthStore } from '@/stores/auth'
 import db from '@/db'
 import { CENSUS_RECORD_STATUS_OPTIONS } from '@/utils/constants'
 import { formatDateTime } from '@/utils/formatters'
@@ -70,6 +71,7 @@ import StatusTag from '@/components/common/StatusTag.vue'
 
 const router = useRouter()
 const censusStore = useCensusStore()
+const authStore = useAuthStore()
 const keyword = ref('')
 const statusFilter = ref('all')
 const records = ref([])
@@ -101,16 +103,22 @@ onMounted(loadRecords)
 async function loadRecords() {
   await censusStore.fetchMyAssignments()
   const assignmentIds = censusStore.assignments.map(item => item.id)
-  if (!assignmentIds.length) {
-    records.value = []
-    return
-  }
-  const list = []
+  const recordMap = new Map()
   for (const assignmentId of assignmentIds) {
     const assignmentRecords = await db.censusRecords.where('assignmentId').equals(assignmentId).toArray()
     for (const record of assignmentRecords) {
-      list.push(await decorateRecord(record))
+      if (record?.id) recordMap.set(Number(record.id), record)
     }
+  }
+  if (authStore.currentUser?.id) {
+    const ownRecords = await db.censusRecords.where('filledBy').equals(Number(authStore.currentUser.id)).toArray()
+    for (const record of ownRecords) {
+      if (record?.id) recordMap.set(Number(record.id), record)
+    }
+  }
+  const list = []
+  for (const record of recordMap.values()) {
+    list.push(await decorateRecord(record))
   }
   records.value = list.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt))
 }
@@ -159,11 +167,11 @@ function showRejectReason(record) {
 }
 
 function viewRecord(record) {
-  router.push(`/m/entry/${record.taskId}/${record.assignmentId}?recordId=${record.id}&mode=view`)
+  router.push(`/m/entry/${record.taskId || 0}/${record.assignmentId || 0}?recordId=${record.id}&mode=view`)
 }
 
 function editRecord(record) {
-  router.push(`/m/entry/${record.taskId}/${record.assignmentId}?recordId=${record.id}`)
+  router.push(`/m/entry/${record.taskId || 0}/${record.assignmentId || 0}?recordId=${record.id}`)
 }
 
 async function submitRecord(record) {
